@@ -78,8 +78,9 @@ export default function ResumeDetailPage() {
 
   const [resume, setResume] = useState<Resume | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'info' | 'ai' | 'raw' | 'pdf'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'ai' | 'raw'>('info');
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [showPdfModal, setShowPdfModal] = useState(false);
 
   useEffect(() => {
     const fetchResume = async () => {
@@ -131,7 +132,7 @@ export default function ResumeDetailPage() {
   };
 
   useEffect(() => {
-    if (activeTab === 'pdf' && !pdfUrlRef.current) {
+    if (showPdfModal && !pdfUrlRef.current) {
       const loadPdf = async () => {
         setPdfLoading(true);
         try {
@@ -153,7 +154,11 @@ export default function ResumeDetailPage() {
       };
       loadPdf();
     }
-  }, [activeTab, resumeId]);
+  }, [showPdfModal, resumeId]);
+
+  const handleOpenPdf = () => {
+    setShowPdfModal(true);
+  };
 
   const handleDownload = () => {
     if (pdfUrlRef.current) {
@@ -263,16 +268,6 @@ export default function ResumeDetailPage() {
                   }`}
                 >
                   原始数据
-                </button>
-                <button
-                  onClick={() => setActiveTab('pdf')}
-                  className={`px-4 py-2 -mb-px text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === 'pdf'
-                      ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                  }`}
-                >
-                  PDF预览
                 </button>
               </div>
 
@@ -442,27 +437,6 @@ export default function ResumeDetailPage() {
                   </pre>
                 </div>
               )}
-
-              {activeTab === 'pdf' && (
-                <div className="h-[600px] bg-gray-100 dark:bg-slate-800 rounded-lg overflow-hidden">
-                  {pdfLoading ? (
-                    <div className="flex items-center justify-center h-full">
-                      <div className="text-gray-500">加载中...</div>
-                    </div>
-                  ) : pdfUrlRef.current ? (
-                    <embed
-                      src={pdfUrlRef.current}
-                      type="application/pdf"
-                      className="w-full h-full"
-                      title="PDF Preview"
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center h-full">
-                      <div className="text-gray-500">无法加载PDF</div>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </div>
 
@@ -501,6 +475,13 @@ export default function ResumeDetailPage() {
                   </span>
                 </div>
               </div>
+              <button 
+                onClick={handleOpenPdf}
+                className="w-full btn btn-primary mt-4 flex items-center justify-center gap-2"
+              >
+                <FileText size={16} />
+                查看PDF简历
+              </button>
             </div>
 
             <div className="card p-6">
@@ -524,6 +505,42 @@ export default function ResumeDetailPage() {
           </div>
         </div>
       </div>
+
+      {showPdfModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="relative w-full h-full max-w-6xl max-h-[90vh] m-4 bg-white dark:bg-slate-800 rounded-lg overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                PDF简历预览
+              </h3>
+              <button 
+                onClick={() => setShowPdfModal(false)}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              {pdfLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-gray-500">加载中...</div>
+                </div>
+              ) : pdfUrlRef.current ? (
+                <embed
+                  src={pdfUrlRef.current}
+                  type="application/pdf"
+                  className="w-full h-full"
+                  title="PDF Preview"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-gray-500">无法加载PDF</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
