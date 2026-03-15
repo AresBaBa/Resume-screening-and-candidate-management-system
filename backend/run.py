@@ -1,5 +1,5 @@
 import os
-from app import create_app, db
+from app import create_app, db, socketio
 from app.models import User, Resume, Job
 
 app = create_app(os.environ.get('FLASK_ENV', 'development'))
@@ -13,4 +13,4 @@ def init_db():
 
 if __name__ == '__main__':
     init_db()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)

@@ -3,6 +3,8 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
+import { ToastProvider } from '@/components/Toast';
+import { WebSocketProvider } from '@/hooks/useWebSocket';
 import { useUserStore } from '@/stores/userStore';
 import { useGlobalHotkeys } from '@/hooks/useHotkeys';
 
@@ -56,7 +58,7 @@ export default function LayoutWrapper({ children }: LayoutWrapperProps) {
   }
 
   if (publicPaths.includes(pathname)) {
-    return <>{children}</>;
+    return <WebSocketProvider><ToastProvider>{children}</ToastProvider></WebSocketProvider>;
   }
 
   if (!isAuthenticated) {
@@ -64,17 +66,21 @@ export default function LayoutWrapper({ children }: LayoutWrapperProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
-      <Sidebar />
-      <main
-        className={`transition-all duration-300 ${
-          sidebarCollapsed ? 'ml-16' : 'ml-64'
-        }`}
-      >
-        {children}
-      </main>
-      <KeyboardShortcutsHelp />
-    </div>
+    <WebSocketProvider>
+      <ToastProvider>
+        <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
+          <Sidebar />
+          <main
+            className={`transition-all duration-300 ${
+              sidebarCollapsed ? 'ml-16' : 'ml-64'
+            }`}
+          >
+            {children}
+          </main>
+          <KeyboardShortcutsHelp />
+        </div>
+      </ToastProvider>
+    </WebSocketProvider>
   );
 }
 

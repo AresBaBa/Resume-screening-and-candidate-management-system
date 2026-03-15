@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Plus, Briefcase, MapPin, Users, Search, Filter, Trash2, Edit2, Zap, X } from 'lucide-react';
 import Header from '@/components/Header';
 import { SkeletonJobCard } from '@/components/Skeleton';
+import { useToast } from '@/components/Toast';
 import { jobApi } from '@/lib/api';
 import { Job } from '@/types';
 
@@ -23,6 +24,7 @@ const statusConfig = {
 export default function JobsPage() {
   const router = useRouter();
   const fetchedRef = useRef(false);
+  const { showToast } = useToast();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -142,9 +144,10 @@ export default function JobsPage() {
     setMatching(jobId);
     try {
       await jobApi.match(jobId, { skip_existing: skipExistingMap[jobId] ?? true });
-      alert('匹配完成！请查看候选人列表');
+      showToast('success', '匹配完成！请查看候选人列表');
     } catch (error) {
       console.error('匹配失败:', error);
+      showToast('error', '匹配失败，请稍后重试');
     } finally {
       setMatching(null);
     }

@@ -4,6 +4,7 @@ from flask_migrate import Migrate
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_caching import Cache
+from flask_socketio import SocketIO
 from dotenv import load_dotenv
 import os
 
@@ -15,6 +16,7 @@ db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
 cache = Cache()
+socketio = SocketIO(cors_allowed_origins="*")
 
 
 def create_app(config_name='default'):
@@ -31,6 +33,7 @@ def create_app(config_name='default'):
     migrate.init_app(app, db)
     jwt.init_app(app)
     cache.init_app(app)
+    socketio.init_app(app)
 
     CORS(app, resources={
         r"/api/*": {
@@ -41,6 +44,7 @@ def create_app(config_name='default'):
     })
 
     from app.routes import auth, jobs, resumes, ai
+    from app.routes import websocket
     app.register_blueprint(auth.bp)
     app.register_blueprint(jobs.bp)
     app.register_blueprint(resumes.bp)

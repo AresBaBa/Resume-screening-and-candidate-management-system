@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
 from app.models import Job, Resume, JobApplication
 from app.services.ai_service import match_resume_to_job
+from app.routes.websocket import send_notification
 
 bp = Blueprint('jobs', __name__, url_prefix='/api/jobs')
 
@@ -196,6 +197,15 @@ def match_job_resumes(job_id):
     db.session.commit()
     
     print(f"tazlyx debug: Matched {matched_count} resumes to job {job_id}")
+    
+    current_user_id = get_jwt_identity()
+    send_notification(
+        current_user_id,
+        'match_complete',
+        '匹配完成',
+        f'岗位 "{job.title}" 已完成 {matched_count} 份简历的匹配',
+        job_id
+    )
     
     return jsonify({
         'message': f'Successfully matched {matched_count} resumes',
