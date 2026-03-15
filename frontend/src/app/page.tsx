@@ -101,14 +101,15 @@ export default function HomePage() {
   };
 
   const handleUpload = async () => {
+    // 调试日志：记录上传开始时的状态
     console.log('tazlyx debug: handleUpload called', { selectedFilesLength: selectedFiles.length, processing });
     if (selectedFiles.length === 0 || processing) {
-      console.log('tazlyx debug: early return', { selectedFilesLength: selectedFiles.length, processing });
       return;
     }
 
     console.log('tazlyx debug: starting upload with files:', selectedFiles.map(f => f.name));
 
+    // 初始化卡片数据，状态设为等待中
     const initialCards: ResumeCardData[] = selectedFiles.map((file, idx) => ({
       id: `card-${idx}-${Date.now()}`,
       name: file.name,
@@ -123,28 +124,26 @@ export default function HomePage() {
 
     const { token } = useUserStore.getState();
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-    console.log('tazlyx debug: token exists:', !!token, token ? token.substring(0, 50) + '...' : null);
     
+    // 构造 FormData 用于文件上传
     const formData = new FormData();
     selectedFiles.forEach((file) => formData.append('files', file));
 
     console.log('tazlyx debug: sending fetch request to:', `${API_BASE_URL}/api/resumes/stream-upload`);
 
     try {
+      // 使用 fetch 发起流式请求，支持 SSE (Server-Sent Events)
       const response = await fetch(`${API_BASE_URL}/api/resumes/stream-upload`, {
         method: 'POST',
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         body: formData,
       });
 
-      console.log('tazlyx debug: fetch response status:', response.status);
-
       if (!response.ok) {
-        const errorText = await response.text();
-        console.log('tazlyx debug: fetch error body:', errorText);
         throw new Error(`HTTP ${response.status}`);
       }
 
+      // 获取可读流的读取器
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -153,19 +152,23 @@ export default function HomePage() {
         throw new Error('No response body');
       }
 
+      // 循环读取流数据
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
+        // 解码字节块为文本
         const chunk = decoder.decode(value, { stream: true });
         buffer += chunk;
 
+        // SSE 数据以双换行分隔
         const lines = buffer.split('\n\n');
         buffer = lines.pop() || '';
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
+              // 解析 SSE 消息内容
               const data: StreamUploadMessage = JSON.parse(line.substring(6));
               handleStreamMessage(data);
             } catch (e) {
@@ -180,6 +183,7 @@ export default function HomePage() {
     } catch (error: any) {
       console.error('tazlyx debug: Upload error:', error);
       setProcessing(false);
+      // 上传出错时更新所有卡片状态
       setCardData((prev) =>
         prev.map((card) => ({
           ...card,
@@ -191,56 +195,80 @@ export default function HomePage() {
   };
 
   const handleStreamMessage = (data: StreamUploadMessage) => {
+    // 处理后端推送的流式消息，更新 UI 状态
     console.log('tazlyx debug: SSE message:', data);
 
     if (data.type === 'start') {
+      // 开始上传某个文件
       setCardData((prev) =>
         prev.map((card, idx) =>
           idx === data.index ? { ...card, status: 'uploading', progress: 10 } : card
         )
       );
     } else if (data.type === 'progress') {
+      // 更新解析进度和日志消息
+      const { index, progress, message } = data;
+      if (index === undefined) return;
+
       setCardData((prev) =>
-        prev.map((card) => {
-          if (card.name === data.file) {
-            const newProgress = card.status === 'uploading' ? Math.min(50, 10 + card.progressMessages.length * 10) : card.progress;
-            const isAnalyzing = data.message?.includes('AI') || data.message?.includes('分析');
-            return {
-              ...card,
-              status: isAnalyzing ? 'analyzing' : card.status,
-              progress: isAnalyzing ? Math.min(90, 50 + card.progressMessages.length * 5) : newProgress,
-              progressMessages: [...card.progressMessages, data.message || ''],
-            };
-          }
-          return card;
-        })
+        prev.map((card, idx) =>
+          idx === index
+            ? {
+                ...card,
+                status: 'analyzing',
+                progress: progress || card.progress,
+                progressMessages: message
+                  ? [...card.progressMessages, message]
+                  : card.progressMessages,
+              }
+            : card
+        )
       );
     } else if (data.type === 'thinking') {
+      // 更新 AI 的思维链内容
+      const { index, content } = data;
+      if (index === undefined) return;
+
       setCardData((prev) =>
-        prev.map((card) => {
-          if (card.name === data.file) {
-            return {
-              ...card,
-              status: 'analyzing',
-              thinkingContent: (card.thinkingContent || '') + (data.message || ''),
-            };
-          }
-          return card;
-        })
+        prev.map((card, idx) =>
+          idx === index
+            ? {
+                ...card,
+                thinkingContent: (card.thinkingContent || '') + (content || ''),
+              }
+            : card
+        )
       );
-    } else if (data.type === 'complete') {
+    } else if (data.type === 'completed') {
+      // 解析完成，存储最终数据
+      const { index, data: resumeData } = data;
+      if (index === undefined) return;
+
       setCardData((prev) =>
-        prev.map((card) =>
-          card.name === data.file
-            ? { ...card, status: 'completed', progress: 100, resumeData: data.resume }
+        prev.map((card, idx) =>
+          idx === index
+            ? {
+                ...card,
+                status: 'completed',
+                progress: 100,
+                resumeData: resumeData,
+              }
             : card
         )
       );
     } else if (data.type === 'error') {
+      // 处理单个文件的解析错误
+      const { index, message } = data;
+      if (index === undefined) return;
+
       setCardData((prev) =>
-        prev.map((card) =>
-          card.name === data.file
-            ? { ...card, status: 'error', error: data.error }
+        prev.map((card, idx) =>
+          idx === index
+            ? {
+                ...card,
+                status: 'error',
+                error: message,
+              }
             : card
         )
       );

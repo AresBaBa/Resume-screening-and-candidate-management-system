@@ -51,21 +51,24 @@ def save_and_parse_resume(file, user_id):
     original_filename = file.filename
     ext = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else 'pdf'
     
-    # 计算文件哈希值，用于检测重复文件
+    # 计算文件哈希值，用于检测重复文件，避免重复存储相同内容的简历
     file_hash = calculate_file_hash(file)
     print(f"tazlyx debug: File hash: {file_hash}")
     
-    # 检测是否存在相同文件（非测试模式）
+    # 检测数据库中是否已存在相同哈希的文件（非测试模式下执行）
     if not TEST_MODE:
         existing_resume = Resume.query.filter_by(file_hash=file_hash).first()
         if existing_resume and os.path.exists(existing_resume.file_path):
             print(f"tazlyx debug: Found existing resume with same hash, re-parsing: {existing_resume.id}")
+            # 更新状态为处理中，准备重新解析
             existing_resume.parsing_status = 'processing'
             db.session.flush()
             
             try:
+                # 调用 AI 服务进行深度解析
                 parsed_data = parse_resume_with_ai(existing_resume.file_path)
                 
+                # 更新解析出的结构化数据到数据库
                 existing_resume.parsed_data = parsed_data.get('raw_text') or ''
                 structured = parsed_data.get('structured') or {}
                 existing_resume.ai_summary = structured.get('summary') or ''
@@ -74,6 +77,7 @@ def save_and_parse_resume(file, user_id):
                 existing_resume.ai_education = structured.get('education') or []
                 existing_resume.ai_projects = structured.get('projects') or []
                 
+                # 提取联系人信息
                 contact = {
                     'email': structured.get('email'),
                     'phone': structured.get('phone'),
@@ -85,10 +89,12 @@ def save_and_parse_resume(file, user_id):
                 existing_resume.ai_contact = contact
                 existing_resume.ai_structured = structured
                 
+                # 处理 AI 评分逻辑
                 score_value = structured.get('score')
                 if score_value is not None:
                     try:
                         existing_resume.ai_score = float(score_value) if isinstance(score_value, (int, float)) else float(str(score_value).strip())
+                        # 确保分数在 0-100 之间
                         if existing_resume.ai_score > 100:
                             existing_resume.ai_score = 100
                         elif existing_resume.ai_score < 0:
@@ -100,23 +106,25 @@ def save_and_parse_resume(file, user_id):
                 existing_resume.parsing_status = 'completed'
                 
             except Exception as e:
+                # 解析失败时记录错误信息
                 print(f"tazlyx debug: Resume re-parsing error: {str(e)}")
                 existing_resume.parsing_status = 'failed'
                 existing_resume.parsed_data = str(e)
             
             return existing_resume
     
-    # 测试模式或新文件: 创建新记录
+    # 如果是新文件或测试模式，则生成唯一文件名并保存到本地
     unique_filename = f"{uuid.uuid4()}.{ext}"
     file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
     
     file.save(file_path)
     
+    # 获取文件大小
     file.seek(0, os.SEEK_END)
     file_size = file.tell()
     file.seek(0)
     
-    # 创建新简历记录
+    # 在数据库中创建新的简历记录
     resume = Resume(
         user_id=user_id,
         file_name=original_filename,
@@ -131,10 +139,12 @@ def save_and_parse_resume(file, user_id):
     db.session.flush()
     
     try:
+        # 对新上传的简历进行 AI 解析
         print(f"tazlyx debug: Parsing resume: {original_filename}")
         parsed_data = parse_resume_with_ai(file_path)
         print(f"tazlyx debug: Parsing result keys: {list(parsed_data.keys())}")
         
+        # 存储解析结果
         resume.parsed_data = parsed_data.get('raw_text') or ''
         structured = parsed_data.get('structured') or {}
         resume.ai_summary = structured.get('summary') or ''
@@ -143,6 +153,7 @@ def save_and_parse_resume(file, user_id):
         resume.ai_education = structured.get('education') or []
         resume.ai_projects = structured.get('projects') or []
         
+        # 存储提取的联系方式
         contact = {
             'email': structured.get('email'),
             'phone': structured.get('phone'),
@@ -154,6 +165,7 @@ def save_and_parse_resume(file, user_id):
         resume.ai_contact = contact
         resume.ai_structured = structured
         
+        # 存储评分
         score_value = structured.get('score')
         if score_value is not None:
             try:
@@ -169,6 +181,7 @@ def save_and_parse_resume(file, user_id):
         resume.parsing_status = 'completed'
         
     except Exception as e:
+        # 记录解析异常
         print(f"tazlyx debug: Resume parsing error: {str(e)}")
         resume.parsing_status = 'failed'
         resume.parsed_data = str(e)
@@ -497,7 +510,7 @@ def stream_upload_resume():
                     resume = save_and_parse_resume_stream(file_obj, current_user_id, q)
                     db.session.commit()
                     resume_dict = resume.to_dict()
-                    q.put(('complete', resume_dict))
+                    q.put(('completed', resume_dict))
                 except Exception as e:
                     print(f"tazlyx debug: run_parse error: {str(e)}")
                     q.put(('error', str(e)))
@@ -517,26 +530,30 @@ def stream_upload_resume():
                 while not q.empty():
                     msg_type, data = q.get()
                     if msg_type == 'progress':
-                        yield f"data: {json.dumps({'type': 'progress', 'file': file_data_list[idx]['filename'], 'message': data})}\n\n"
+                        msg = data.get('message') if isinstance(data, dict) else data
+                        prog = data.get('progress') if isinstance(data, dict) else None
+                        yield f"data: {json.dumps({'type': 'progress', 'file': file_data_list[idx]['filename'], 'index': idx, 'message': msg, 'progress': prog})}\n\n"
                     elif msg_type == 'thinking':
-                        yield f"data: {json.dumps({'type': 'thinking', 'file': file_data_list[idx]['filename'], 'message': data})}\n\n"
-                    elif msg_type == 'complete':
-                        yield f"data: {json.dumps({'type': 'complete', 'file': file_data_list[idx]['filename'], 'resume': data})}\n\n"
+                        yield f"data: {json.dumps({'type': 'thinking', 'file': file_data_list[idx]['filename'], 'index': idx, 'content': data})}\n\n"
+                    elif msg_type == 'completed':
+                        yield f"data: {json.dumps({'type': 'completed', 'file': file_data_list[idx]['filename'], 'index': idx, 'data': data})}\n\n"
                     elif msg_type == 'error':
-                        yield f"data: {json.dumps({'type': 'error', 'file': file_data_list[idx]['filename'], 'error': data})}\n\n"
+                        yield f"data: {json.dumps({'type': 'error', 'file': file_data_list[idx]['filename'], 'index': idx, 'message': data})}\n\n"
             time.sleep(0.1)
         
         for idx, q in progress_queues.items():
             while not q.empty():
                 msg_type, data = q.get()
                 if msg_type == 'progress':
-                    yield f"data: {json.dumps({'type': 'progress', 'file': file_data_list[idx]['filename'], 'message': data})}\n\n"
+                    msg = data.get('message') if isinstance(data, dict) else data
+                    prog = data.get('progress') if isinstance(data, dict) else None
+                    yield f"data: {json.dumps({'type': 'progress', 'file': file_data_list[idx]['filename'], 'index': idx, 'message': msg, 'progress': prog})}\n\n"
                 elif msg_type == 'thinking':
-                    yield f"data: {json.dumps({'type': 'thinking', 'file': file_data_list[idx]['filename'], 'message': data})}\n\n"
-                elif msg_type == 'complete':
-                    yield f"data: {json.dumps({'type': 'complete', 'file': file_data_list[idx]['filename'], 'resume': data})}\n\n"
+                    yield f"data: {json.dumps({'type': 'thinking', 'file': file_data_list[idx]['filename'], 'index': idx, 'content': data})}\n\n"
+                elif msg_type == 'completed':
+                    yield f"data: {json.dumps({'type': 'completed', 'file': file_data_list[idx]['filename'], 'index': idx, 'data': data})}\n\n"
                 elif msg_type == 'error':
-                    yield f"data: {json.dumps({'type': 'error', 'file': file_data_list[idx]['filename'], 'error': data})}\n\n"
+                    yield f"data: {json.dumps({'type': 'error', 'file': file_data_list[idx]['filename'], 'index': idx, 'message': data})}\n\n"
     
     return Response(generate(), mimetype='text/event-stream', headers={
         'Cache-Control': 'no-cache',
@@ -550,11 +567,11 @@ def save_and_parse_resume_stream(file, user_id, progress_queue):
     import uuid
     from app import db
     
-    def progress_callback(msg):
+    def progress_callback(msg, progress=None):
         if isinstance(msg, dict) and msg.get("type") == "thinking":
             progress_queue.put(("thinking", msg.get("content", "")))
         else:
-            progress_queue.put(("progress", msg))
+            progress_queue.put(("progress", {"message": msg, "progress": progress}))
     
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     
@@ -563,7 +580,7 @@ def save_and_parse_resume_stream(file, user_id, progress_queue):
     
     file.seek(0)
     file_hash = calculate_file_hash(file)
-    progress_callback(f"计算文件哈希完成")
+    progress_callback(f"计算文件哈希完成", 20)
     
     unique_filename = f"{uuid.uuid4()}.{ext}"
     file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
@@ -571,7 +588,7 @@ def save_and_parse_resume_stream(file, user_id, progress_queue):
     file.seek(0)
     with open(file_path, 'wb') as f:
         f.write(file.read())
-    progress_callback(f"文件保存成功")
+    progress_callback(f"文件保存成功", 40)
     
     file.seek(0, os.SEEK_END)
     file_size = file.tell()
@@ -589,10 +606,10 @@ def save_and_parse_resume_stream(file, user_id, progress_queue):
     
     db.session.add(resume)
     db.session.flush()
-    progress_callback(f"数据库记录创建成功")
+    progress_callback(f"数据库记录创建成功", 50)
     
     try:
-        progress_callback(f"开始AI解析简历...")
+        progress_callback(f"开始AI解析简历...", 60)
         parsed_data = parse_resume_with_ai_stream(file_path, progress_callback)
         
         resume.parsed_data = parsed_data.get('raw_text') or ''
@@ -626,7 +643,7 @@ def save_and_parse_resume_stream(file, user_id, progress_queue):
                 resume.ai_score = None
         
         resume.parsing_status = 'completed'
-        progress_callback(f"AI解析完成")
+        progress_callback(f"AI解析完成", 100)
         
     except Exception as e:
         print(f"tazlyx debug: Resume parsing error: {str(e)}")

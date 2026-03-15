@@ -79,8 +79,11 @@ const handleReview = (row: any) => {
   ElMessage.info(`Review application ${row.id} - to be implemented`)
 }
 
-const getStatusType = (status: string) => {
-  const types: Record<string, string> = {
+/**
+ * 获取岗位申请状态对应的标签类型
+ */
+const getStatusType = (status: string): "success" | "warning" | "info" | "primary" | "danger" | undefined => {
+  const types: Record<string, "success" | "warning" | "info" | "primary" | "danger"> = {
     pending: 'warning',
     reviewing: 'info',
     interview: 'primary',

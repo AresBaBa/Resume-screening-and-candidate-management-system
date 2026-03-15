@@ -24,12 +24,14 @@ interface ResumeCardProps {
 export default function ResumeCard({ data, onRemove, onView }: ResumeCardProps) {
   const thinkingRef = useRef<HTMLDivElement | null>(null);
 
+  // 自动滚动思维链内容到底部
   useEffect(() => {
     if (thinkingRef.current && data.thinkingContent) {
       thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight;
     }
   }, [data.thinkingContent]);
 
+  // 根据不同状态返回对应的图标
   const getStatusIcon = () => {
     switch (data.status) {
       case 'uploading':
@@ -44,6 +46,7 @@ export default function ResumeCard({ data, onRemove, onView }: ResumeCardProps) 
     }
   };
 
+  // 根据不同状态返回对应的文本描述
   const getStatusText = () => {
     switch (data.status) {
       case 'uploading':
@@ -59,6 +62,7 @@ export default function ResumeCard({ data, onRemove, onView }: ResumeCardProps) 
     }
   };
 
+  // 根据不同状态返回对应的进度条颜色
   const getProgressColor = () => {
     switch (data.status) {
       case 'completed':
@@ -70,6 +74,7 @@ export default function ResumeCard({ data, onRemove, onView }: ResumeCardProps) 
     }
   };
 
+  // 格式化文件大小显示
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -78,6 +83,7 @@ export default function ResumeCard({ data, onRemove, onView }: ResumeCardProps) 
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden flex flex-col h-full">
+      {/* 头部：显示文件名、大小及状态图标 */}
       <div className="p-4 border-b border-gray-100 dark:border-slate-700">
         <div className="flex items-start gap-3">
           <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
@@ -95,6 +101,7 @@ export default function ResumeCard({ data, onRemove, onView }: ResumeCardProps) 
               {formatFileSize(data.file.size)}
             </p>
           </div>
+          {/* 只有未完成时才显示删除按钮 */}
           {onRemove && data.status !== 'completed' && (
             <button
               onClick={() => onRemove(data.id)}
@@ -106,6 +113,7 @@ export default function ResumeCard({ data, onRemove, onView }: ResumeCardProps) 
         </div>
       </div>
 
+      {/* 主体：根据状态显示进度、分析过程或结果摘要 */}
       <div className="p-4 flex-1 overflow-hidden">
         {data.status === 'pending' && (
           <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
@@ -115,6 +123,7 @@ export default function ResumeCard({ data, onRemove, onView }: ResumeCardProps) 
 
         {(data.status === 'uploading' || data.status === 'analyzing') && (
           <div className="space-y-3">
+            {/* 进度条显示 */}
             <div className="flex items-center gap-2 text-sm">
               <span className={`font-medium ${
                 data.status === 'uploading' ? 'text-primary-600 dark:text-primary-400' : 'text-blue-600 dark:text-blue-400'
@@ -129,6 +138,7 @@ export default function ResumeCard({ data, onRemove, onView }: ResumeCardProps) 
                 style={{ width: `${data.progress}%` }}
               />
             </div>
+            {/* 最近的进度日志消息 */}
             {data.progressMessages.length > 0 && (
               <div className="space-y-1 mt-3">
                 {data.progressMessages.slice(-3).map((msg, idx) => (
@@ -143,6 +153,7 @@ export default function ResumeCard({ data, onRemove, onView }: ResumeCardProps) 
                 ))}
               </div>
             )}
+            {/* AI 思考过程实时展示 (思维链) */}
             {data.thinkingContent && data.status === 'analyzing' && (
               <div 
                 ref={thinkingRef}
@@ -160,6 +171,7 @@ export default function ResumeCard({ data, onRemove, onView }: ResumeCardProps) 
           </div>
         )}
 
+        {/* 错误提示 */}
         {data.status === 'error' && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
@@ -169,8 +181,10 @@ export default function ResumeCard({ data, onRemove, onView }: ResumeCardProps) 
           </div>
         )}
 
+        {/* 解析完成后显示结果摘要 */}
         {data.status === 'completed' && data.resumeData && (
           <div className="space-y-3">
+            {/* 联系人、教育、工作经验摘要 */}
             {data.resumeData.ai_contact?.name && (
               <div className="flex items-center gap-2 text-sm">
                 <User className="w-4 h-4 text-primary-500" />

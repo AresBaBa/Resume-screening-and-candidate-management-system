@@ -3,11 +3,18 @@ from flask_jwt_extended import create_access_token, create_refresh_token, jwt_re
 from app import db
 from app.models import User
 
+# 身份认证路由模块：处理用户注册、登录、Token 刷新及个人信息管理
 bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
 
 @bp.route('/register', methods=['POST'])
 def register():
+    """
+    用户注册接口
+    1. 检查邮箱是否已被注册
+    2. 创建新用户并加密存储密码
+    3. 生成并返回访问令牌(Access Token)和刷新令牌(Refresh Token)
+    """
     data = request.get_json()
     
     if User.query.filter_by(email=data['email']).first():
@@ -36,6 +43,10 @@ def register():
 
 @bp.route('/login', methods=['POST'])
 def login():
+    """
+    用户登录接口
+    校验邮箱和密码，成功后返回双 Token
+    """
     data = request.get_json()
     
     user = User.query.filter_by(email=data['email']).first()
@@ -57,6 +68,10 @@ def login():
 @bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
+    """
+    刷新 Access Token
+    需要携带有效的 Refresh Token 访问
+    """
     current_user_id = int(get_jwt_identity())
     access_token = create_access_token(identity=str(current_user_id))
     
@@ -66,6 +81,7 @@ def refresh():
 @bp.route('/me', methods=['GET'])
 @jwt_required()
 def get_current_user():
+    """获取当前登录用户的详细资料"""
     current_user_id = int(get_jwt_identity())
     user = User.query.get(current_user_id)
     
@@ -78,6 +94,7 @@ def get_current_user():
 @bp.route('/me', methods=['PUT'])
 @jwt_required()
 def update_current_user():
+    """更新当前登录用户的个人信息（姓名、电话、头像等）"""
     current_user_id = int(get_jwt_identity())
     user = User.query.get(current_user_id)
     

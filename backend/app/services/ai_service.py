@@ -23,9 +23,7 @@ class OpenAICompatibleService(AIService):
     """OpenAI 兼容 API 服务（支持 DeepSeek、OpenAI、X.AI 等）"""
 
     def chat(self, messages: List[Dict[str, str]], **kwargs) -> str:
-        # 根据模型动态设置 max_tokens
-        # deepseek-chat 的 max_tokens 范围是 [1, 8192]
-        # deepseek-reasoner 可以支持到更大 (通常建议 32000)
+        # 根据模型动态设置 max_tokens，deepseek-chat 建议 8k，reasoner 建议 32k
         default_max_tokens = 8192 if self.model == "deepseek-chat" else 32000
         
         payload = {
@@ -34,23 +32,27 @@ class OpenAICompatibleService(AIService):
             "max_tokens": kwargs.get("max_tokens", default_max_tokens),
             "stream": False
         }
+        # 设置温度，reasoner 模型通常不支持 temperature 参数
         temp = kwargs.get("temperature", 0.1)
         if temp and self.model != "deepseek-reasoner":
             payload["temperature"] = temp
 
         data = json.dumps(payload).encode("utf-8")
         req = Request(self.base_url, data=data, method="POST")
+        # 添加授权和内容类型请求头
         req.add_header("Authorization", f"Bearer {self.api_key}")
         req.add_header("Content-Type", "application/json")
 
         print(f"tazlyx debug: AI Request - url: {self.base_url}, model: {self.model}")
 
         try:
+            # 发送同步 HTTP 请求
             with urlopen(req, timeout=kwargs.get("timeout", 60)) as response:
                 body = response.read().decode("utf-8", errors="ignore")
             
             result = json.loads(body)
 
+            # 解析 API 响应，提取消息内容
             if "choices" in result and len(result["choices"]) > 0:
                 content = result["choices"][0].get("message", {}).get("content", "")
                 print(f"tazlyx debug: AI response received, length: {len(content)}")
@@ -59,6 +61,7 @@ class OpenAICompatibleService(AIService):
                 raise Exception(f"Invalid API response: {result}")
 
         except HTTPError as e:
+            # 处理 HTTP 错误，记录详细错误信息
             error_body = e.read().decode("utf-8", errors="ignore")
             print(f"tazlyx debug: AI API HTTP error - status: {e.code}, body: {error_body}")
             raise Exception(f"API HTTP error: {e.code} - {error_body}")
@@ -70,13 +73,11 @@ class OpenAICompatibleService(AIService):
             raise Exception(f"API error: {str(e)}")
 
     def chat_stream(self, messages: List[Dict[str, str]], callback=None, **kwargs):
-        """流式调用 AI，返回 reasoning_content 和 content"""
+        """流式调用 AI，返回 reasoning_content 和 content，支持 SSE 推送"""
         import urllib.request
         import time
         
         # 根据模型动态设置 max_tokens
-        # deepseek-chat 的 max_tokens 范围是 [1, 8192]
-        # deepseek-reasoner 可以支持到更大 (通常建议 32000)
         default_max_tokens = 8192 if self.model == "deepseek-chat" else 32000
         
         payload = {
@@ -93,6 +94,7 @@ class OpenAICompatibleService(AIService):
         req = Request(self.base_url, data=data, method="POST")
         req.add_header("Authorization", f"Bearer {self.api_key}")
         req.add_header("Content-Type", "application/json")
+        # 指定接收事件流
         req.add_header("Accept", "text/event-stream")
 
         print(f"tazlyx debug: AI Stream Request - url: {self.base_url}, model: {self.model}")
@@ -101,10 +103,12 @@ class OpenAICompatibleService(AIService):
         content = ""
         
         try:
+            # 发起流式请求
             response = urllib.request.urlopen(req, timeout=kwargs.get("timeout", 120))
-            reader = responsefp = response
+            responsefp = response
             
             while True:
+                # 逐行读取 SSE 数据
                 line = responsefp.readline()
                 if not line:
                     break
@@ -113,25 +117,29 @@ class OpenAICompatibleService(AIService):
                 if not line.startswith("data: "):
                     continue
                 
+                # 去掉 "data: " 前缀
                 data_str = line[6:]
                 if data_str == "[DONE]":
                     break
                 
                 try:
+                    # 解析 JSON 数据块
                     chunk_data = json.loads(data_str)
-                    # print(f"tazlyx debug: AI chunk: {json.dumps(chunk_data)[:200]}...")
                     delta = chunk_data.get("choices", [{}])[0].get("delta", {})
                     
+                    # 提取思维链 (reasoning) 和 文本内容 (content)
                     reasoning = delta.get("reasoning_content") or delta.get("reasoning")
                     text_content = delta.get("content")
                     
                     if reasoning:
                         reasoning_content += reasoning
+                        # 如果有回调，则实时推送思维链内容
                         if callback:
                             callback({"type": "reasoning", "content": reasoning})
                     
                     if text_content:
                         content += text_content
+                        # 实时推送生成的文本内容
                         if callback:
                             callback({"type": "content", "content": text_content})
                             

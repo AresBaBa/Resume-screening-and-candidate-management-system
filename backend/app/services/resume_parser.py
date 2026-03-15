@@ -21,6 +21,7 @@ class ResumeParser:
         ]
         
     def parse_pdf(self, file_path: str) -> Dict[str, Any]:
+        """解析 PDF 文件并提取文本内容"""
         result = {
             'raw_text': '',
             'pages': 0,
@@ -28,16 +29,20 @@ class ResumeParser:
         }
         
         try:
+            # 使用 pdfplumber 打开 PDF
             with pdfplumber.open(file_path) as pdf:
                 result['pages'] = len(pdf.pages)
                 
                 all_text = []
                 for page in pdf.pages:
+                    # 提取每一页的文本
                     text = page.extract_text()
                     if text:
                         all_text.append(text)
                 
+                # 合并所有页面的文本
                 result['raw_text'] = '\n\n'.join(all_text)
+                # 使用正则表达式进行初步的结构化处理
                 result['structured'] = self._structure_resume(result['raw_text'])
                 
         except Exception as e:
@@ -46,6 +51,7 @@ class ResumeParser:
         return result
     
     def parse_docx(self, file_path: str) -> Dict[str, Any]:
+        """解析 Word (DOCX) 文件并提取文本内容"""
         from docx import Document
         
         result = {
@@ -55,9 +61,12 @@ class ResumeParser:
         }
         
         try:
+            # 使用 python-docx 加载文档
             doc = Document(file_path)
+            # 提取所有段落的文本
             paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
             result['raw_text'] = '\n\n'.join(paragraphs)
+            # 进行结构化处理
             result['structured'] = self._structure_resume(result['raw_text'])
         except Exception as e:
             result['error'] = str(e)
@@ -65,6 +74,7 @@ class ResumeParser:
         return result
     
     def _structure_resume(self, text: str) -> Dict[str, Any]:
+        """使用预定义的正则表达式从原始文本中提取关键字段"""
         structured = {
             'name': self._extract_name(text),
             'email': self._extract_email(text),

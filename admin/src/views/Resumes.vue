@@ -72,8 +72,13 @@ const handleDelete = async (row: any) => {
   }
 }
 
-const getStatusType = (status: string) => {
-  const types: Record<string, string> = {
+/**
+ * 获取简历解析状态对应的标签类型
+ * @param status 状态字符串
+ * @returns Element Plus Tag 类型: success | warning | info | primary | danger
+ */
+const getStatusType = (status: string): "success" | "warning" | "info" | "primary" | "danger" | undefined => {
+  const types: Record<string, "success" | "warning" | "info" | "primary" | "danger"> = {
     pending: 'info',
     processing: 'warning',
     completed: 'success',

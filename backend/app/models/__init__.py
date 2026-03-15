@@ -4,7 +4,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 
 class User(db.Model):
-    """用户表 - 所有用户统一管理，无需区分角色"""
+    """
+    用户模型 - 存储登录账号及基本个人信息
+    所有用户（管理员、HR、求职者）在当前版本统一管理
+    """
     __tablename__ = 'users'
 
     id = db.Column(db.Integer, primary_key=True, comment='用户ID')
@@ -16,15 +19,19 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, comment='创建时间')
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment='更新时间')
 
+    # 关联：一个用户可以上传多份简历
     resumes = db.relationship('Resume', back_populates='user', cascade='all, delete-orphan')
 
     def set_password(self, password):
+        """生成并存储密码哈希值"""
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
+        """校验输入密码是否正确"""
         return check_password_hash(self.password_hash, password)
 
     def to_dict(self):
+        """将模型实例转换为字典，方便 JSON 序列化输出"""
         return {
             'id': self.id,
             'email': self.email,
@@ -37,7 +44,9 @@ class User(db.Model):
 
 
 class Resume(db.Model):
-    """简历表 - 用户上传的简历"""
+    """
+    简历模型 - 存储用户上传的简历文件信息及 AI 提取的结构化数据
+    """
     __tablename__ = 'resumes'
 
     id = db.Column(db.Integer, primary_key=True, comment='简历ID')
@@ -49,6 +58,8 @@ class Resume(db.Model):
     file_hash = db.Column(db.String(64), nullable=True, comment='文件哈希值')
     parsing_status = db.Column(db.String(20), default='pending', comment='解析状态: pending/processing/completed/failed')
     parsed_data = db.Column(db.Text, comment='解析后的原始文本')
+    
+    # AI 提取的结构化信息
     ai_summary = db.Column(db.Text, comment='AI提取的个人简介')
     ai_skills = db.Column(db.JSON, comment='AI提取的技能列表')
     ai_experience = db.Column(db.JSON, comment='AI提取的工作经验')
@@ -58,13 +69,16 @@ class Resume(db.Model):
     ai_structured = db.Column(db.JSON, comment='AI提取的完整结构化数据')
     ai_score = db.Column(db.Float, comment='AI评分(0-100)')
     ai_feedback = db.Column(db.Text, comment='AI反馈')
+    
     created_at = db.Column(db.DateTime, default=datetime.utcnow, comment='创建时间')
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment='更新时间')
 
     user = db.relationship('User', back_populates='resumes')
+    # 关联：一份简历可以投递到多个岗位申请记录中
     applications = db.relationship('JobApplication', back_populates='resume', cascade='all, delete-orphan')
 
     def to_dict(self):
+        """将简历信息序列化为字典，包含 AI 提取的结构化数据"""
         return {
             'id': self.id,
             'user_id': self.user_id,
@@ -89,7 +103,9 @@ class Resume(db.Model):
 
 
 class Job(db.Model):
-    """职位表 - 公开的职位信息"""
+    """
+    职位模型 - 存储 HR 发布的岗位需求信息
+    """
     __tablename__ = 'jobs'
 
     id = db.Column(db.Integer, primary_key=True, comment='职位ID')
@@ -106,9 +122,11 @@ class Job(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, comment='创建时间')
     updated_at = db.Column(db.Date, default=datetime.utcnow, onupdate=datetime.utcnow, comment='更新时间')
 
+    # 关联：一个岗位会有多个求职者申请记录
     applications = db.relationship('JobApplication', back_populates='job', cascade='all, delete-orphan')
 
     def to_dict(self):
+        """转换职位信息为字典"""
         return {
             'id': self.id,
             'title': self.title,
@@ -127,7 +145,9 @@ class Job(db.Model):
 
 
 class JobApplication(db.Model):
-    """岗位申请/匹配记录表 - 连接岗位和简历，记录匹配评分"""
+    """
+    岗位申请/匹配模型 - 存储简历与岗位的关联关系及 AI 评估出的契合度指标
+    """
     __tablename__ = 'job_applications'
 
     id = db.Column(db.Integer, primary_key=True, comment='记录ID')
@@ -138,12 +158,15 @@ class JobApplication(db.Model):
     applicant_phone = db.Column(db.String(20), comment='申请人电话')
     applicant_city = db.Column(db.String(100), comment='申请人城市')
     status = db.Column(db.String(20), default='pending', comment='状态: pending/screening/pass/interviewing/hired/rejected')
+    
+    # AI 评估的多维度评分
     matching_score = db.Column(db.Float, comment='综合匹配度评分(0-100)')
     skill_score = db.Column(db.Float, comment='技能匹配度评分(0-100)')
     experience_score = db.Column(db.Float, comment='经验相关性评分(0-100)')
     education_score = db.Column(db.Float, comment='教育背景契合度评分(0-100)')
     ai_comment = db.Column(db.Text, comment='AI评语')
     matching_data = db.Column(db.JSON, comment='详细匹配数据')
+    
     created_at = db.Column(db.DateTime, default=datetime.utcnow, comment='创建时间')
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment='更新时间')
 
@@ -151,6 +174,7 @@ class JobApplication(db.Model):
     resume = db.relationship('Resume')
 
     def to_dict(self):
+        """将申请记录及其关联的简历、岗位摘要信息序列化输出"""
         return {
             'id': self.id,
             'job_id': self.job_id,

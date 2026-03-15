@@ -1,5 +1,6 @@
 <template>
   <div class="dashboard">
+    <!-- 顶部统计卡片区域 -->
     <el-row :gutter="20">
       <el-col :span="6">
         <el-card shadow="hover">
@@ -9,7 +10,7 @@
             </div>
             <div class="stat-content">
               <div class="stat-value">{{ stats.openJobs }}</div>
-              <div class="stat-label">Open Jobs</div>
+              <div class="stat-label">开放职位</div>
             </div>
           </div>
         </el-card>
@@ -22,7 +23,7 @@
             </div>
             <div class="stat-content">
               <div class="stat-value">{{ stats.totalCandidates }}</div>
-              <div class="stat-label">Candidates</div>
+              <div class="stat-label">候选人总数</div>
             </div>
           </div>
         </el-card>
@@ -35,7 +36,7 @@
             </div>
             <div class="stat-content">
               <div class="stat-value">{{ stats.pendingApplications }}</div>
-              <div class="stat-label">Pending</div>
+              <div class="stat-label">待处理申请</div>
             </div>
           </div>
         </el-card>
@@ -48,7 +49,7 @@
             </div>
             <div class="stat-content">
               <div class="stat-value">{{ stats.hiredThisMonth }}</div>
-              <div class="stat-label">Hired</div>
+              <div class="stat-label">本月入职</div>
             </div>
           </div>
         </el-card>
@@ -56,29 +57,31 @@
     </el-row>
 
     <el-row :gutter="20" style="margin-top: 20px">
+      <!-- 最近申请列表 -->
       <el-col :span="12">
         <el-card>
           <template #header>
-            <span>Recent Applications</span>
+            <span>最近申请记录</span>
           </template>
           <el-table :data="recentApplications" style="width: 100%">
-            <el-table-column prop="candidate_name" label="Candidate" />
-            <el-table-column prop="job_title" label="Job" />
-            <el-table-column prop="status" label="Status" width="100">
+            <el-table-column prop="candidate_name" label="候选人" />
+            <el-table-column prop="job_title" label="申请职位" />
+            <el-table-column prop="status" label="状态" width="100">
               <template #default="{ row }">
-                <el-tag :type="getStatusType(row.status)">{{ row.status }}</el-tag>
+                <el-tag :type="getStatusType(row.status)">{{ getStatusLabel(row.status) }}</el-tag>
               </template>
             </el-table-column>
           </el-table>
         </el-card>
       </el-col>
+      <!-- AI 筛选概况图表区域 -->
       <el-col :span="12">
         <el-card>
           <template #header>
-            <span>AI Screening Summary</span>
+            <span>AI 筛选分析概况</span>
           </template>
           <div class="chart-container">
-            <p>Loading chart data...</p>
+            <p>正在加载图表数据...</p>
           </div>
         </el-card>
       </el-col>
@@ -89,6 +92,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
+// 模拟统计数据，实际应从 API 获取
 const stats = ref({
   openJobs: 12,
   totalCandidates: 156,
@@ -96,14 +100,18 @@ const stats = ref({
   hiredThisMonth: 8,
 })
 
+// 最近申请记录模拟数据
 const recentApplications = ref([
-  { candidate_name: 'John Doe', job_title: 'Frontend Developer', status: 'pending' },
-  { candidate_name: 'Jane Smith', job_title: 'Backend Developer', status: 'reviewing' },
-  { candidate_name: 'Bob Johnson', job_title: 'Full Stack Developer', status: 'interview' },
+  { candidate_name: '张三', job_title: '前端开发工程师', status: 'pending' },
+  { candidate_name: '李四', job_title: '后端开发工程师', status: 'reviewing' },
+  { candidate_name: '王五', job_title: '全栈开发工程师', status: 'interview' },
 ])
 
-const getStatusType = (status: string) => {
-  const types: Record<string, string> = {
+/**
+ * 根据状态获取 Element Plus Tag 类型
+ */
+const getStatusType = (status: string): "success" | "warning" | "info" | "primary" | "danger" | undefined => {
+  const types: Record<string, "success" | "warning" | "info" | "primary" | "danger"> = {
     pending: 'warning',
     reviewing: 'info',
     interview: 'primary',
@@ -111,6 +119,20 @@ const getStatusType = (status: string) => {
     rejected: 'danger',
   }
   return types[status] || 'info'
+}
+
+/**
+ * 状态中文标签转换
+ */
+const getStatusLabel = (status: string) => {
+  const labels: Record<string, string> = {
+    pending: '待处理',
+    reviewing: '复核中',
+    interview: '面试中',
+    accepted: '已录用',
+    rejected: '已拒绝',
+  }
+  return labels[status] || status
 }
 </script>
 

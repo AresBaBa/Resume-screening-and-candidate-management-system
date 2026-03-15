@@ -5,11 +5,15 @@ from app.models import Job, Resume, JobApplication
 from app.services.ai_service import match_resume_to_job
 from app.routes.websocket import send_notification
 
+# 职位管理路由模块：处理职位的增删改查、简历匹配以及候选人管理
 bp = Blueprint('jobs', __name__, url_prefix='/api/jobs')
 
 
 @bp.route('', methods=['GET'])
 def get_jobs():
+    """
+    获取职位列表，支持分页和多种筛选条件（状态、地点、工作类型）
+    """
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 12, type=int)
     status = request.args.get('status', 'open')
@@ -38,6 +42,7 @@ def get_jobs():
 
 @bp.route('/<int:job_id>', methods=['GET'])
 def get_job(job_id):
+    """获取单个职位的详细信息"""
     job = Job.query.get(job_id)
     
     if not job:
@@ -49,6 +54,7 @@ def get_job(job_id):
 @bp.route('', methods=['POST'])
 @jwt_required()
 def create_job():
+    """发布新职位，需要 JWT 认证"""
     current_user_id = int(get_jwt_identity())
     data = request.get_json()
     
@@ -73,6 +79,7 @@ def create_job():
 @bp.route('/<int:job_id>', methods=['PUT'])
 @jwt_required()
 def update_job(job_id):
+    """更新职位信息"""
     job = Job.query.get(job_id)
     
     if not job:
@@ -80,6 +87,7 @@ def update_job(job_id):
     
     data = request.get_json()
     
+    # 支持部分字段更新
     if 'title' in data:
         job.title = data['title']
     if 'description' in data:
@@ -107,6 +115,7 @@ def update_job(job_id):
 @bp.route('/<int:job_id>', methods=['DELETE'])
 @jwt_required()
 def delete_job(job_id):
+    """删除职位"""
     job = Job.query.get(job_id)
     
     if not job:
@@ -121,7 +130,11 @@ def delete_job(job_id):
 @bp.route('/<int:job_id>/match', methods=['POST'])
 @jwt_required()
 def match_job_resumes(job_id):
-    """对岗位的所有简历进行AI匹配评分"""
+    """
+    对岗位的所有简历进行 AI 匹配评分。
+    该函数会遍历简历库，调用 AI 服务计算每份简历与当前职位的匹配度，
+    并生成/更新 JobApplication 记录。
+    """
     job = Job.query.get(job_id)
     
     if not job:
@@ -130,6 +143,7 @@ def match_job_resumes(job_id):
     data = request.get_json() or {}
     resume_ids = data.get('resume_ids', None)
     
+    # 筛选待匹配的简历：如果指定了 resume_ids 则仅匹配指定的，否则匹配全部已解析成功的简历
     if resume_ids:
         resumes = Resume.query.filter(Resume.id.in_(resume_ids), Resume.parsing_status == 'completed').all()
     else:
@@ -142,17 +156,17 @@ def match_job_resumes(job_id):
     results = []
     
     for resume in resumes:
+        # 检查是否已存在申请记录
         existing = JobApplication.query.filter_by(job_id=job_id, resume_id=resume.id).first()
         
+        # 如果设置了跳过已有记录，则跳过匹配
         if existing and data.get('skip_existing', False):
             results.append(existing.to_dict())
             continue
         
-        resume_structured = resume.ai_structured or {}
-        resume_skills = resume.ai_skills or []
-        
+        # 构造简历数据，用于 AI 匹配
         resume_data = {
-            'skills': resume_skills,
+            'skills': resume.ai_skills or [],
             'experience': resume.ai_experience or [],
             'education': resume.ai_education or [],
             'summary': resume.ai_summary or '',
@@ -162,12 +176,11 @@ def match_job_resumes(job_id):
         contact = resume.ai_contact if isinstance(resume.ai_contact, dict) else {}
         print(f"tazlyx debug: Matching resume {resume.id} - {contact.get('name') if contact else 'Unknown'}")
         
+        # 调用 AI 服务进行深度匹配分析
         matching_result = match_resume_to_job(resume_data, job_data)
         
-        # 使用上面判断过的 contact
-        # contact = resume.ai_contact or {} 
-        
         if existing:
+            # 更新已有记录的多维度评分
             existing.matching_score = matching_result.get('matching_score', 0)
             existing.skill_score = matching_result.get('skill_score', 0)
             existing.experience_score = matching_result.get('experience_score', 0)
@@ -176,6 +189,7 @@ def match_job_resumes(job_id):
             existing.matching_data = matching_result.get('matching_data', {})
             application = existing
         else:
+            # 创建新的岗位申请记录
             application = JobApplication(
                 job_id=job_id,
                 resume_id=resume.id,
@@ -200,6 +214,7 @@ def match_job_resumes(job_id):
     
     print(f"tazlyx debug: Matched {matched_count} resumes to job {job_id}")
     
+    # 发送 WebSocket 通知，告知前端匹配完成
     current_user_id = get_jwt_identity()
     send_notification(
         current_user_id,
@@ -218,7 +233,11 @@ def match_job_resumes(job_id):
 
 @bp.route('/<int:job_id>/candidates', methods=['GET'])
 def get_job_candidates(job_id):
-    """获取岗位的候选人列表（筛选功能）"""
+    """
+    获取指定岗位的候选人列表，支持复杂的筛选和排序
+    筛选维度包括：分数区间、状态、城市、技能关键词
+    排序维度包括：匹配总分、技能分、经验分、教育分、创建时间
+    """
     job = Job.query.get(job_id)
     
     if not job:
@@ -227,6 +246,7 @@ def get_job_candidates(job_id):
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     
+    # 解析筛选参数
     min_score = request.args.get('min_score', type=float)
     max_score = request.args.get('max_score', type=float)
     status = request.args.get('status')
@@ -237,6 +257,7 @@ def get_job_candidates(job_id):
     
     query = JobApplication.query.filter_by(job_id=job_id)
     
+    # 应用筛选逻辑
     if min_score is not None:
         query = query.filter(JobApplication.matching_score >= min_score)
     if max_score is not None:
@@ -246,37 +267,19 @@ def get_job_candidates(job_id):
     if city:
         query = query.filter(JobApplication.applicant_city.ilike(f'%{city}%'))
     
-    if sort_by == 'matching_score':
-        if sort_order == 'desc':
-            query = query.order_by(JobApplication.matching_score.desc())
-        else:
-            query = query.order_by(JobApplication.matching_score.asc())
-    elif sort_by == 'skill_score':
-        if sort_order == 'desc':
-            query = query.order_by(JobApplication.skill_score.desc())
-        else:
-            query = query.order_by(JobApplication.skill_score.asc())
-    elif sort_by == 'experience_score':
-        if sort_order == 'desc':
-            query = query.order_by(JobApplication.experience_score.desc())
-        else:
-            query = query.order_by(JobApplication.experience_score.asc())
-    elif sort_by == 'education_score':
-        if sort_order == 'desc':
-            query = query.order_by(JobApplication.education_score.desc())
-        else:
-            query = query.order_by(JobApplication.education_score.asc())
-    elif sort_by == 'created_at':
-        if sort_order == 'desc':
-            query = query.order_by(JobApplication.created_at.desc())
-        else:
-            query = query.order_by(JobApplication.created_at.asc())
+    # 应用动态排序逻辑
+    sort_attr = getattr(JobApplication, sort_by, JobApplication.matching_score)
+    if sort_order == 'desc':
+        query = query.order_by(sort_attr.desc())
+    else:
+        query = query.order_by(sort_attr.asc())
     
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     
     candidates = []
     for app in pagination.items:
         app_dict = app.to_dict()
+        # 后过滤：检查技能关键词
         if skill and skill.lower() not in [s.lower() for s in (app.resume.ai_skills or [])]:
             continue
         candidates.append(app_dict)
@@ -292,7 +295,7 @@ def get_job_candidates(job_id):
 
 @bp.route('/<int:job_id>/candidates/<int:application_id>', methods=['GET'])
 def get_job_candidate(job_id, application_id):
-    """获取岗位候选人的详细信息"""
+    """获取岗位候选人的详细匹配评估信息"""
     application = JobApplication.query.filter_by(id=application_id, job_id=job_id).first()
     
     if not application:
@@ -304,7 +307,7 @@ def get_job_candidate(job_id, application_id):
 @bp.route('/<int:job_id>/candidates/<int:application_id>/status', methods=['PUT'])
 @jwt_required()
 def update_candidate_status(job_id, application_id):
-    """更新候选人状态"""
+    """更新候选人在特定岗位下的处理状态（如：面试中、已入职等）"""
     application = JobApplication.query.filter_by(id=application_id, job_id=job_id).first()
     
     if not application:
@@ -331,7 +334,7 @@ def update_candidate_status(job_id, application_id):
 @bp.route('/candidates', methods=['GET'])
 @jwt_required()
 def get_all_candidates():
-    """获取所有岗位的候选人（跨岗位筛选）"""
+    """获取所有岗位的候选人（跨岗位筛选，用于全局人才池管理）"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     
@@ -357,16 +360,12 @@ def get_all_candidates():
     if city:
         query = query.filter(JobApplication.applicant_city.ilike(f'%{city}%'))
     
-    if sort_by == 'matching_score':
-        if sort_order == 'desc':
-            query = query.order_by(JobApplication.matching_score.desc())
-        else:
-            query = query.order_by(JobApplication.matching_score.asc())
-    elif sort_by == 'created_at':
-        if sort_order == 'desc':
-            query = query.order_by(JobApplication.created_at.desc())
-        else:
-            query = query.order_by(JobApplication.created_at.asc())
+    # 动态排序
+    sort_attr = getattr(JobApplication, sort_by, JobApplication.matching_score)
+    if sort_order == 'desc':
+        query = query.order_by(sort_attr.desc())
+    else:
+        query = query.order_by(sort_attr.asc())
     
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     
@@ -390,7 +389,7 @@ def get_all_candidates():
 @bp.route('/candidates/<int:application_id>', methods=['GET'])
 @jwt_required()
 def get_candidate_detail(application_id):
-    """获取候选人详情（包含简历完整信息）"""
+    """获取全局候选人详情（包含简历完整信息及文件路径）"""
     application = JobApplication.query.get(application_id)
     
     if not application:
@@ -405,7 +404,7 @@ def get_candidate_detail(application_id):
 @bp.route('/candidates/<int:application_id>/status', methods=['PUT'])
 @jwt_required()
 def update_candidate_status_global(application_id):
-    """更新候选人状态（全局）"""
+    """更新全局候选人状态"""
     application = JobApplication.query.get(application_id)
     
     if not application:
@@ -432,7 +431,7 @@ def update_candidate_status_global(application_id):
 @bp.route('/candidates/batch-status', methods=['PUT'])
 @jwt_required()
 def batch_update_candidate_status():
-    """批量更新候选人状态"""
+    """批量更新候选人处理状态（用于 HR 批量通过或拒绝申请）"""
     data = request.get_json()
     
     application_ids = data.get('application_ids', [])
@@ -448,6 +447,7 @@ def batch_update_candidate_status():
     if new_status not in valid_statuses:
         return jsonify({'error': f'Invalid status. Must be one of: {valid_statuses}'}), 400
     
+    # 执行批量更新操作
     updated_count = JobApplication.query.filter(
         JobApplication.id.in_(application_ids)
     ).update({JobApplication.status: new_status}, synchronize_session=False)
@@ -465,7 +465,7 @@ def batch_update_candidate_status():
 @bp.route('/candidates/compare', methods=['POST'])
 @jwt_required()
 def compare_candidates():
-    """对比多个候选人的评分（选择2-3人并排对比）"""
+    """对比多个候选人的评分（选择 2-3 人并排展示其各项评分指标）"""
     data = request.get_json()
     
     application_ids = data.get('application_ids', [])

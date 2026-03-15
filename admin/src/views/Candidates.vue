@@ -68,8 +68,11 @@ const handleView = (row: any) => {
   ElMessage.info(`View candidate ${row.id} - to be implemented`)
 }
 
-const getStatusType = (status: string) => {
-  const types: Record<string, string> = {
+/**
+ * 获取候选人状态对应的标签类型
+ */
+const getStatusType = (status: string): "success" | "warning" | "info" | "primary" | "danger" | undefined => {
+  const types: Record<string, "success" | "warning" | "info" | "primary" | "danger"> = {
     active: 'success',
     inactive: 'info',
     hired: 'primary',
