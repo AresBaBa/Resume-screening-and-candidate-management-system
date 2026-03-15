@@ -9,25 +9,75 @@ export interface User {
   updated_at?: string;
 }
 
-export interface Candidate {
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  name: string;
+  phone?: string;
+}
+
+export interface AuthResponse {
+  message: string;
+  user: User;
+  access_token: string;
+  refresh_token?: string;
+}
+
+export interface Resume {
   id: number;
   user_id: number;
-  resume_url?: string;
-  resume_parsed?: Record<string, unknown>;
-  skills?: string[];
-  experience_years?: number;
-  education?: Education[];
-  status: 'active' | 'inactive' | 'hired' | 'rejected';
+  file_name: string;
+  file_path: string;
+  file_type?: string;
+  file_size?: number;
+  parsing_status: 'pending' | 'processing' | 'completed' | 'failed';
+  parsed_data?: string;
+  ai_summary?: string;
+  ai_skills?: string[];
+  ai_experience?: Experience[];
+  ai_education?: Education[];
+  ai_projects?: Project[];
+  ai_contact?: Contact;
+  ai_structured?: Record<string, unknown>;
+  ai_score?: number;
+  ai_feedback?: string;
   created_at?: string;
   updated_at?: string;
 }
 
+export interface Contact {
+  name?: string;
+  email?: string;
+  phone?: string;
+  city?: string;
+  gender?: string;
+  birthday?: string;
+}
+
+export interface Experience {
+  title?: string;
+  company?: string;
+  dates?: string;
+  description?: string;
+}
+
 export interface Education {
-  school: string;
-  degree: string;
-  field?: string;
-  start_date?: string;
-  end_date?: string;
+  degree?: string;
+  school?: string;
+  major?: string;
+  graduation_date?: string;
+}
+
+export interface Project {
+  name?: string;
+  role?: string;
+  tech?: string;
+  description?: string;
 }
 
 export interface Job {
@@ -36,52 +86,63 @@ export interface Job {
   description: string;
   requirements?: string[];
   skills_required?: string[];
+  skills_preferred?: string[];
   location?: string;
   salary_range?: string;
   employment_type: 'full-time' | 'part-time' | 'contract' | 'internship';
-  status: 'open' | 'closed' | 'draft';
+  status: 'open' | 'closed';
   created_by?: number;
   created_at?: string;
   updated_at?: string;
 }
 
-export interface Application {
+export interface JobApplication {
   id: number;
-  candidate_id: number;
   job_id: number;
-  resume_id?: number;
-  status: 'pending' | 'reviewing' | 'interview' | 'rejected' | 'accepted';
-  cover_letter?: string;
-  ai_score?: number;
-  ai_feedback?: string;
-  interview_status: 'not_scheduled' | 'scheduled' | 'completed';
-  interview_score?: number;
-  notes?: string;
-  applied_at?: string;
-  updated_at?: string;
-}
-
-export interface Resume {
-  id: number;
-  candidate_id: number;
-  file_name: string;
-  file_path: string;
-  file_type?: string;
-  file_size?: number;
-  parsed_data?: Record<string, unknown>;
-  ai_summary?: string;
-  ai_skills?: string[];
-  ai_experience?: Experience[];
-  ai_education?: Education[];
-  parsing_status: 'pending' | 'processing' | 'completed' | 'failed';
+  resume_id: number;
+  applicant_name?: string;
+  applicant_email?: string;
+  applicant_phone?: string;
+  applicant_city?: string;
+  status: 'pending' | 'screening' | 'pass' | 'interviewing' | 'hired' | 'rejected';
+  matching_score?: number;
+  skill_score?: number;
+  experience_score?: number;
+  education_score?: number;
+  ai_comment?: string;
+  matching_data?: MatchingData;
   created_at?: string;
   updated_at?: string;
+  resume?: Resume;
+  job?: Job;
 }
 
-export interface Experience {
-  company: string;
-  title: string;
-  start_date?: string;
-  end_date?: string;
-  description?: string;
+export interface MatchingData {
+  matched_skills?: string[];
+  missing_skills?: string[];
+  preferred_skills?: string[];
+  experience_match?: string;
+  education_match?: string;
+}
+
+export interface PaginatedResponse<T> {
+  items?: T[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
+export interface JobMatchResult {
+  message: string;
+  matched_count: number;
+  results: JobApplication[];
+}
+
+export interface CandidateComparison {
+  candidates: JobApplication[];
+  comparison: {
+    metrics: string[];
+    labels: string[];
+  };
 }

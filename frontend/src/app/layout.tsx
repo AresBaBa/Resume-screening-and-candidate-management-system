@@ -1,22 +1,25 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import './globals.css';
-
-const inter = Inter({ subsets: ['latin'] });
+import { ThemeProvider } from '@/contexts/ThemeContext';
+import LayoutWrapper from '@/components/LayoutWrapper';
 
 export const metadata: Metadata = {
-  title: 'Resume Screening System',
-  description: 'AI-powered resume screening and candidate management system',
+  title: '简历筛选系统',
+  description: 'AI驱动的简历筛选与候选人管理系统',
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html lang="en">
-      <body className={inter.className}>{children}</body>
+    <html lang="zh-CN" suppressHydrationWarning>
+      <body className="antialiased">
+        <ThemeProvider>
+          <LayoutWrapper>{children}</LayoutWrapper>
+        </ThemeProvider>
+      </body>
     </html>
   );
 }

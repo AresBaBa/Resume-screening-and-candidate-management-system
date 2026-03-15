@@ -1,0 +1,179 @@
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 25%,
+    #e0e0e0 50%,
+    #f0f0f0 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+.dark .skeleton {
+  background: linear-gradient(
+    90deg,
+    #1e293b 25%,
+    #334155 50%,
+    #1e293b 75%
+  );
+  background-size: 200% 100%;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeletonText {
+  height: 14px;
+  border-radius: 4px;
+}
+
+.skeletonTitle {
+  height: 24px;
+  width: 60%;
+  border-radius: 4px;
+}
+
+.skeletonSubtitle {
+  height: 18px;
+  width: 40%;
+  border-radius: 4px;
+}
+
+.skeletonImage {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+}
+
+.skeletonButton {
+  height: 36px;
+  width: 100px;
+  border-radius: 8px;
+}
+
+.skeletonCard {
+  border-radius: 12px;
+  padding: 16px;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.dark .skeletonCard {
+  background: #1e293b;
+}
+
+.skeletonCardItem {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.dark .skeletonCardItem {
+  background: #1e293b;
+}
+
+.skeletonCardImage {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+}
+
+.skeletonCardContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeletonCardTitle {
+  height: 16px;
+  width: 60%;
+}
+
+.skeletonCardMeta {
+  display: flex;
+  gap: 8px;
+}
+
+.skeletonCardMetaItem {
+  height: 12px;
+  width: 60px;
+}
+
+.skeletonListItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.skeletonListItemIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+.skeletonListItemContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.skeletonListItemTitle {
+  height: 14px;
+  width: 40%;
+}
+
+.skeletonListItemSubtitle {
+  height: 12px;
+  width: 25%;
+}
+
+.skeletonTable {
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.skeletonTableHeader {
+  display: flex;
+  gap: 16px;
+  padding: 12px 16px;
+  background: #f1f5f9;
+}
+
+.dark .skkeletonTableHeader {
+  background: #334155;
+}
+
+.skeletonTableHeaderCell {
+  flex: 1;
+  height: 16px;
+}
+
+.skeletonTableRow {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dark .skeletonTableRow {
+  border-color: #334155;
+}
+
+.skeletonTableCell {
+  flex: 1;
+  height: 14px;
+}

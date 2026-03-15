@@ -12,9 +12,11 @@ interface User {
 
 interface UserState {
   user: User | null;
+  token: string | null;
   isAuthenticated: boolean;
   setUser: (user: User | null) => void;
-  login: (user: User) => void;
+  setToken: (token: string | null) => void;
+  login: (user: User, token: string) => void;
   logout: () => void;
 }
 
@@ -22,10 +24,12 @@ export const useUserStore = create<UserState>()(
   persist(
     (set) => ({
       user: null,
+      token: null,
       isAuthenticated: false,
       setUser: (user) => set({ user, isAuthenticated: !!user }),
-      login: (user) => set({ user, isAuthenticated: true }),
-      logout: () => set({ user: null, isAuthenticated: false }),
+      setToken: (token) => set({ token, isAuthenticated: !!token }),
+      login: (user, token) => set({ user, token, isAuthenticated: true }),
+      logout: () => set({ user: null, token: null, isAuthenticated: false }),
     }),
     {
       name: 'user-storage',
