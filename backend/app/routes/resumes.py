@@ -59,7 +59,10 @@ def save_and_parse_resume(file, user_id):
         contact = {
             'email': structured.get('email'),
             'phone': structured.get('phone'),
-            'name': structured.get('name')
+            'name': structured.get('name'),
+            'gender': structured.get('gender'),
+            'birthday': structured.get('birthday'),
+            'city': structured.get('city')
         }
         resume.ai_contact = contact
         resume.ai_structured = structured

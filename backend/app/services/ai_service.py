@@ -149,15 +149,18 @@ def parse_resume_with_ai_v2(raw_text: str) -> Dict[str, Any]:
 请提取以下JSON字段（如果某项不存在则返回null或空数组）：
 {{
     "name": "姓名",
+    "gender": "性别",
+    "birthday": "生日/年龄",
     "email": "邮箱",
     "phone": "电话",
+    "city": "所在城市",
     "summary": "个人简介/求职意向",
     "skills": ["技能1", "技能2"],
     "experience": [
         {{"title": "职位名称", "company": "公司名称", "dates": "工作时间", "description": "工作描述"}}
     ],
     "education": [
-        {{"degree": "学历", "school": "学校", "major": "专业", "dates": "时间"}}
+        {{"degree": "学历", "school": "学校", "major": "专业", "graduation_date": "毕业时间"}}
     ],
     "projects": [
         {{"name": "项目名称", "role": "个人职责", "tech": "技术栈", "description": "项目描述"}}
