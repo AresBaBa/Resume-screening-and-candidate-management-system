@@ -536,8 +536,14 @@ export default function ResumeDetailPage() {
       </div>
 
       {showPdfModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="relative w-full h-full max-w-6xl max-h-[90vh] m-4 bg-white dark:bg-slate-800 rounded-lg overflow-hidden flex flex-col">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setShowPdfModal(false)}
+        >
+          <div 
+            className="relative w-full h-full max-w-6xl max-h-[90vh] m-4 bg-white dark:bg-slate-800 rounded-lg overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                 PDF简历预览

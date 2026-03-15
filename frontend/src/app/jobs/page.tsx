@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Briefcase, MapPin, Users, Search, Filter, Trash2, Edit2, Zap, X } from 'lucide-react';
 import Header from '@/components/Header';
+import { Popconfirm } from '@/components/Popconfirm';
 import { SkeletonJobCard } from '@/components/Skeleton';
 import { useToast } from '@/components/Toast';
 import { Pagination } from '@/components/Pagination';
@@ -140,7 +141,6 @@ export default function JobsPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('确定要删除这个岗位吗？')) return;
     try {
       await jobApi.delete(id);
       setJobs(jobs.filter((j) => j.id !== id));
@@ -326,12 +326,18 @@ export default function JobsPage() {
                     >
                       <Edit2 size={14} />
                     </button>
-                    <button
-                      onClick={() => handleDelete(job.id)}
-                      className="p-1.5 btn btn-secondary text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                    <Popconfirm
+                      title="确定要删除这个岗位吗？"
+                      description="此操作不可恢复"
+                      onConfirm={() => handleDelete(job.id)}
+                      type="danger"
                     >
-                      <Trash2 size={14} />
-                    </button>
+                      <button
+                        className="p-1.5 btn btn-secondary text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </Popconfirm>
                   </div>
                 </div>
               );
@@ -341,8 +347,17 @@ export default function JobsPage() {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => {
+            setShowModal(false);
+            setEditingJob(null);
+          }}
+        >
+          <div 
+            className="bg-white dark:bg-slate-800 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                 {editingJob ? '编辑岗位' : '创建岗位'}

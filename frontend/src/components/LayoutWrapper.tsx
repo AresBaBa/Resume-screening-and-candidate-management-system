@@ -4,12 +4,29 @@ import { ReactNode, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import { ToastProvider } from '@/components/Toast';
-import { WebSocketProvider } from '@/hooks/useWebSocket';
+import { UploadNotificationProvider, useUploadNotification } from '@/components/UploadNotification';
+import { WebSocketProvider, useWebSocket } from '@/hooks/useWebSocket';
 import { useUserStore } from '@/stores/userStore';
 import { useGlobalHotkeys } from '@/hooks/useHotkeys';
 
 interface LayoutWrapperProps {
   children: ReactNode;
+}
+
+function NotificationListener() {
+  const { notifications } = useWebSocket();
+  const { showNotification } = useUploadNotification();
+
+  useEffect(() => {
+    if (notifications.length > 0) {
+      const latest = notifications[0];
+      if (latest.type === 'resume_uploaded') {
+        showNotification('success', latest.title, latest.message);
+      }
+    }
+  }, [notifications, showNotification]);
+
+  return null;
 }
 
 export default function LayoutWrapper({ children }: LayoutWrapperProps) {
@@ -58,7 +75,16 @@ export default function LayoutWrapper({ children }: LayoutWrapperProps) {
   }
 
   if (publicPaths.includes(pathname)) {
-    return <WebSocketProvider><ToastProvider>{children}</ToastProvider></WebSocketProvider>;
+    return (
+      <WebSocketProvider>
+        <ToastProvider>
+          <UploadNotificationProvider>
+            {children}
+            <NotificationListener />
+          </UploadNotificationProvider>
+        </ToastProvider>
+      </WebSocketProvider>
+    );
   }
 
   if (!isAuthenticated) {
@@ -68,17 +94,20 @@ export default function LayoutWrapper({ children }: LayoutWrapperProps) {
   return (
     <WebSocketProvider>
       <ToastProvider>
-        <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
-          <Sidebar />
-          <main
-            className={`transition-all duration-300 ${
-              sidebarCollapsed ? 'ml-16' : 'ml-64'
-            }`}
-          >
-            {children}
-          </main>
-          <KeyboardShortcutsHelp />
-        </div>
+        <UploadNotificationProvider>
+          <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
+            <Sidebar />
+            <main
+              className={`transition-all duration-300 ${
+                sidebarCollapsed ? 'ml-16' : 'ml-64'
+              }`}
+            >
+              {children}
+            </main>
+            <KeyboardShortcutsHelp />
+          </div>
+          <NotificationListener />
+        </UploadNotificationProvider>
       </ToastProvider>
     </WebSocketProvider>
   );

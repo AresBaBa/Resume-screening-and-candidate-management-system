@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { LoadingProvider } from '@/components/Loading';
 import LayoutWrapper from '@/components/LayoutWrapper';
 
 export const metadata: Metadata = {
@@ -17,7 +18,9 @@ export default function RootLayout({
     <html lang="zh-CN" suppressHydrationWarning>
       <body className="antialiased">
         <ThemeProvider>
-          <LayoutWrapper>{children}</LayoutWrapper>
+          <LoadingProvider>
+            <LayoutWrapper>{children}</LayoutWrapper>
+          </LoadingProvider>
         </ThemeProvider>
       </body>
     </html>

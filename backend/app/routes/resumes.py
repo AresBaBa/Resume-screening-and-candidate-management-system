@@ -5,9 +5,10 @@ from werkzeug.utils import secure_filename
 import os
 import uuid
 import hashlib
-from app import db
+from app import db, socketio
 from app.models import Resume, User
 from app.services.resume_parser import parse_resume, parse_resume_with_ai, get_resume_thumbnail
+from app.routes.websocket import send_notification
 
 bp = Blueprint('resumes', __name__, url_prefix='/api/resumes')
 
@@ -15,8 +16,8 @@ ALLOWED_EXTENSIONS = {'pdf', 'docx'}
 UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', '/tmp/uploads')
 
 # 测试模式：忽略重复文件检测，允许重复上传相同文件用于测试分页
-TEST_MODE = true
-# TEST_MODE = false
+# TEST_MODE = True
+TEST_MODE = False
 
 
 def calculate_file_hash(file) -> str:
@@ -296,6 +297,22 @@ def upload_resume():
             })
     
     db.session.commit()
+    
+    if uploaded_resumes:
+        file_count = len(uploaded_resumes)
+        file_names = ', '.join([r.file_name for r in uploaded_resumes[:3]])
+        if len(uploaded_resumes) > 3:
+            file_names += f' 等{file_count}个文件'
+        else:
+            file_names = uploaded_resumes[0].file_name if file_count == 1 else file_names
+        
+        send_notification(
+            current_user_id, 
+            'resume_uploaded', 
+            '简历上传成功', 
+            f'成功上传 {file_names}',
+            None
+        )
     
     response = {
         'uploaded': [r.to_dict() for r in uploaded_resumes],

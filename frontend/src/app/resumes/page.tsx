@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, FileText, Trash2, Eye, Download, RefreshCw, Search, Filter, CheckCircle, XCircle, Clock, ArrowLeft } from 'lucide-react';
 import Header from '@/components/Header';
+import { Popconfirm } from '@/components/Popconfirm';
 import { SkeletonResumeCard } from '@/components/Skeleton';
 import { Pagination } from '@/components/Pagination';
 import { resumeApi } from '@/lib/api';
@@ -66,7 +67,6 @@ export default function ResumesPage() {
   }, [statusFilter]);
 
   const handleDelete = async (id: number) => {
-    if (!confirm('确定要删除这份简历吗？')) return;
     try {
       await resumeApi.delete(id);
       setResumes(resumes.filter((r) => r.id !== id));
@@ -205,13 +205,19 @@ export default function ResumesPage() {
                     >
                       <RefreshCw size={16} />
                     </button>
-                    <button
-                      onClick={() => handleDelete(resume.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400 transition-colors"
-                      title="删除"
+                    <Popconfirm
+                      title="确定要删除这份简历吗？"
+                      description="此操作不可恢复"
+                      onConfirm={() => handleDelete(resume.id)}
+                      type="danger"
                     >
-                      <Trash2 size={16} />
-                    </button>
+                      <button
+                        className="p-1.5 text-gray-400 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400 transition-colors"
+                        title="删除"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </Popconfirm>
                   </div>
                 </div>
               );
