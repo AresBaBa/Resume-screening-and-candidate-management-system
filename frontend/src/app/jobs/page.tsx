@@ -30,6 +30,7 @@ export default function JobsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [matching, setMatching] = useState<number | null>(null);
+  const [skipExistingMap, setSkipExistingMap] = useState<Record<number, boolean>>({});
 
   const [formData, setFormData] = useState({
     title: '',
@@ -140,7 +141,7 @@ export default function JobsPage() {
   const handleMatch = async (jobId: number) => {
     setMatching(jobId);
     try {
-      await jobApi.match(jobId);
+      await jobApi.match(jobId, { skip_existing: skipExistingMap[jobId] ?? true });
       alert('匹配完成！请查看候选人列表');
     } catch (error) {
       console.error('匹配失败:', error);
@@ -282,6 +283,15 @@ export default function JobsPage() {
                   )}
 
                   <div className="flex items-center gap-2 pt-3 border-t border-gray-100 dark:border-slate-700">
+                    <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={skipExistingMap[job.id] ?? true}
+                        onChange={(e) => setSkipExistingMap((prev) => ({ ...prev, [job.id]: e.target.checked }))}
+                        className="w-3.5 h-3.5 rounded border-gray-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500"
+                      />
+                      跳过已评分
+                    </label>
                     <button
                       onClick={() => handleMatch(job.id)}
                       disabled={matching === job.id}

@@ -46,6 +46,14 @@ export default function Sidebar() {
     if (saved !== null) {
       setIsCollapsed(saved === 'true');
     }
+
+    const handleSidebarToggle = () => {
+      const saved = localStorage.getItem('sidebarCollapsed');
+      setIsCollapsed(saved === 'true');
+    };
+
+    window.addEventListener('sidebar-toggle', handleSidebarToggle);
+    return () => window.removeEventListener('sidebar-toggle', handleSidebarToggle);
   }, []);
 
   const handleToggleCollapse = () => {
