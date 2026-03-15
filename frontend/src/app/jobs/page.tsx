@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Briefcase, MapPin, Users, Search, Filter, Trash2, Edit2, Zap, X } from 'lucide-react';
 import Header from '@/components/Header';
@@ -10,6 +10,7 @@ import { useToast } from '@/components/Toast';
 import { Pagination } from '@/components/Pagination';
 import { jobApi } from '@/lib/api';
 import { Job } from '@/types';
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 const employmentTypes = {
   'full-time': '全职',
@@ -25,8 +26,9 @@ const statusConfig = {
 
 export default function JobsPage() {
   const router = useRouter();
-  const fetchedRef = useRef(false);
+  const isInitialMount = useRef(true);
   const { showToast } = useToast();
+  const { onNotification } = useWebSocket();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -51,14 +53,10 @@ export default function JobsPage() {
   });
 
   useEffect(() => {
-    fetchJobs();
-  }, [page, perPage, statusFilter]);
-
-  useEffect(() => {
     setPage(1);
   }, [statusFilter]);
 
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     setLoading(true);
     try {
       const params: any = { page, per_page: perPage };
@@ -85,7 +83,25 @@ export default function JobsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, perPage, statusFilter]);
+
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    fetchJobs();
+  }, [page, perPage, statusFilter, fetchJobs]);
+
+  useEffect(() => {
+    const unsubscribe = onNotification((notification) => {
+      if (notification.type === 'match_complete') {
+        console.log('tazlyx debug: Match complete notification received, refreshing job list');
+        fetchJobs();
+      }
+    });
+    return unsubscribe;
+  }, [onNotification, fetchJobs]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -307,11 +323,11 @@ export default function JobsPage() {
                     </label>
                     <button
                       onClick={() => handleMatch(job.id)}
-                      disabled={matching === job.id}
+                      disabled={matching === job.id || !!job.matching_state}
                       className="flex-1 btn btn-primary py-1.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
                     >
                       <Zap size={14} />
-                      {matching === job.id ? '匹配中...' : 'AI匹配'}
+                      {matching === job.id || job.matching_state ? '匹配中...' : 'AI匹配'}
                     </button>
                     <button
                       onClick={() => router.push(`/jobs/${job.id}/candidates`)}

@@ -4,6 +4,7 @@ from app import db
 from app.models import Job, Resume, JobApplication
 from app.services.ai_service import match_resume_to_job
 from app.routes.websocket import send_notification
+from app.services.matching_state import get_matching_manager
 
 # 职位管理路由模块：处理职位的增删改查、简历匹配以及候选人管理
 bp = Blueprint('jobs', __name__, url_prefix='/api/jobs')
@@ -31,8 +32,25 @@ def get_jobs():
         page=page, per_page=per_page, error_out=False
     )
     
+    jobs_list = [j.to_dict() for j in pagination.items]
+    job_ids = [j.id for j in pagination.items]
+    
+    matching_states = {}
+    try:
+        matching_manager = get_matching_manager()
+        matching_states = matching_manager.get_matching_jobs(job_ids)
+    except Exception as e:
+        print(f"tazlyx debug: Failed to get matching states: {e}")
+    
+    for job in jobs_list:
+        job_id = job.get('id')
+        if job_id in matching_states:
+            job['matching_state'] = matching_states[job_id]
+        else:
+            job['matching_state'] = None
+    
     return jsonify({
-        'jobs': [j.to_dict() for j in pagination.items],
+        'jobs': jobs_list,
         'total': pagination.total,
         'page': page,
         'per_page': per_page,
@@ -143,6 +161,14 @@ def match_job_resumes(job_id):
     data = request.get_json() or {}
     resume_ids = data.get('resume_ids', None)
     
+    current_user_id = int(get_jwt_identity())
+    
+    try:
+        matching_manager = get_matching_manager()
+        matching_manager.set_matching(job_id, current_user_id)
+    except Exception as e:
+        print(f"tazlyx debug: Failed to set matching state in Redis: {e}")
+    
     # 筛选待匹配的简历：如果指定了 resume_ids 则仅匹配指定的，否则匹配全部已解析成功的简历
     if resume_ids:
         resumes = Resume.query.filter(Resume.id.in_(resume_ids), Resume.parsing_status == 'completed').all()
@@ -214,8 +240,13 @@ def match_job_resumes(job_id):
     
     print(f"tazlyx debug: Matched {matched_count} resumes to job {job_id}")
     
+    try:
+        matching_manager = get_matching_manager()
+        matching_manager.clear_matching(job_id)
+    except Exception as e:
+        print(f"tazlyx debug: Failed to clear matching state in Redis: {e}")
+    
     # 发送 WebSocket 通知，告知前端匹配完成
-    current_user_id = get_jwt_identity()
     send_notification(
         current_user_id,
         'match_complete',

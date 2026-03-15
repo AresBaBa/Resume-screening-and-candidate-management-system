@@ -94,6 +94,11 @@ export interface Job {
   created_by?: number;
   created_at?: string;
   updated_at?: string;
+  matching_state?: {
+    status: string;
+    user_id: number;
+    started_at: string;
+  } | null;
 }
 
 export interface JobApplication {

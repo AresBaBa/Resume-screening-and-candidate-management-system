@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useUserStore } from '@/stores/userStore';
 
@@ -16,6 +16,10 @@ export interface Notification {
   createdAt: string;
 }
 
+type NotificationCallback = (notification: Notification) => void;
+
+let notificationCallbacks: NotificationCallback[] = [];
+
 /**
  * WebSocket 上下文状态接口定义
  */
@@ -25,6 +29,7 @@ interface WebSocketContextType {
   connected: boolean;
   clearUnread: () => void;
   clearNotifications: () => void;
+  onNotification: (callback: NotificationCallback) => () => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
@@ -101,6 +106,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       notificationList = [notification, ...notificationList];
       unreadCountNum++;
       forceUpdate(n => n + 1);
+      
+      notificationCallbacks.forEach(callback => callback(notification));
     });
 
     // 连接错误处理
@@ -128,6 +135,14 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     forceUpdate(n => n + 1);
   };
 
+  // 注册通知回调
+  const onNotification = useCallback((callback: NotificationCallback) => {
+    notificationCallbacks.push(callback);
+    return () => {
+      notificationCallbacks = notificationCallbacks.filter(cb => cb !== callback);
+    };
+  }, []);
+
   return (
     <WebSocketContext.Provider value={{
       notifications: notificationList,
@@ -135,6 +150,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       connected: connectedState,
       clearUnread,
       clearNotifications,
+      onNotification,
     }}>
       {children}
     </WebSocketContext.Provider>

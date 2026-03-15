@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, FileText, Trash2, Eye, Download, RefreshCw, Search, Filter, CheckCircle, XCircle, Clock, ArrowLeft } from 'lucide-react';
 import Header from '@/components/Header';
@@ -19,7 +19,7 @@ const statusConfig = {
 
 export default function ResumesPage() {
   const router = useRouter();
-  const fetchedRef = useRef(false);
+  const isInitialMount = useRef(true);
   const [resumes, setResumes] = useState<Resume[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -29,7 +29,7 @@ export default function ResumesPage() {
   const [total, setTotal] = useState(0);
   const [paginationKey, setPaginationKey] = useState(0);
 
-  const fetchResumes = async () => {
+  const fetchResumes = useCallback(async () => {
     setLoading(true);
     try {
       const params: any = { page, per_page: perPage };
@@ -56,15 +56,19 @@ export default function ResumesPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchResumes();
-  }, [page, perPage, statusFilter, paginationKey]);
+  }, [page, perPage, statusFilter]);
 
   useEffect(() => {
     setPage(1);
   }, [statusFilter]);
+
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    fetchResumes();
+  }, [page, perPage, statusFilter, paginationKey, fetchResumes]);
 
   const handleDelete = async (id: number) => {
     try {
