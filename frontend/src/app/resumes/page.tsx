@@ -160,11 +160,14 @@ export default function ResumesPage() {
                       <FileText className="text-primary-600 dark:text-primary-400" size={24} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-gray-900 dark:text-white truncate">
-                        {resume.ai_contact?.name || resume.file_name.split('.')[0] || '未知姓名'}
-                        {resume.ai_education?.[0]?.degree && ` - ${resume.ai_education[0].degree}`}
-                        {resume.ai_intended_position && ` - ${resume.ai_intended_position}`}
+                      <h3 className="font-medium text-gray-900 dark:text-white truncate text-sm">
+                        {resume.file_name}
                       </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-300 mt-0.5">
+                        {resume.ai_education?.[0]?.school && `${resume.ai_education[0].school} `}
+                        {resume.ai_education?.[0]?.degree && `${resume.ai_education[0].degree}`}
+                        {resume.ai_education?.[0]?.major && ` • ${resume.ai_education[0].major}`}
+                      </p>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                         {formatFileSize(resume.file_size)} • {resume.created_at?.split('T')[0]}
                       </p>

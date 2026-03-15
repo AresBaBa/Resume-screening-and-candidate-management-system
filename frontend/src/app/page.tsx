@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, FileText, FolderOpen, ArrowRight, CheckCircle, AlertCircle, Loader2, X, Plus, Keyboard } from 'lucide-react';
 import Header from '@/components/Header';
-import { resumeApi } from '@/lib/api';
+import { resumeApi, uploadWithProgress } from '@/lib/api';
 
 interface SelectedFile {
   id: string;
@@ -19,7 +19,7 @@ export default function HomePage() {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ name: string; success: boolean; error?: string }[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<{ name: string; success: boolean; progress: number; error?: string }[]>([]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -92,26 +92,32 @@ export default function HomePage() {
     if (selectedFiles.length === 0) return;
 
     setUploading(true);
-    setUploadProgress(selectedFiles.map((f) => ({ name: f.name, success: false })));
+    setUploadProgress(selectedFiles.map((f) => ({ name: f.name, success: false, progress: 0 })));
 
     try {
-      for (let i = 0; i < selectedFiles.length; i++) { // fixed: use selectedFiles instead of files
+      for (let i = 0; i < selectedFiles.length; i++) {
         const selectedFile = selectedFiles[i];
         setUploadProgress((prev) =>
-          prev.map((p, idx) => (idx === i ? { ...p, success: false } : p))
+          prev.map((p, idx) => (idx === i ? { ...p, success: false, progress: 0 } : p))
         );
 
         try {
-          const formData = new FormData();
-          formData.append('files', selectedFile.file);
-          await resumeApi.upload(formData);
+          await uploadWithProgress(
+            '/api/resumes',
+            selectedFile.file,
+            (progress) => {
+              setUploadProgress((prev) =>
+                prev.map((p, idx) => (idx === i ? { ...p, progress } : p))
+              );
+            }
+          );
           setUploadProgress((prev) =>
-            prev.map((p, idx) => (idx === i ? { ...p, success: true } : p))
+            prev.map((p, idx) => (idx === i ? { ...p, success: true, progress: 100 } : p))
           );
         } catch (error: any) {
           setUploadProgress((prev) =>
             prev.map((p, idx) =>
-              idx === i ? { ...p, success: false, error: error.response?.data?.msg || '上传失败' } : p
+              idx === i ? { ...p, success: false, error: error.response?.data?.msg || error.response?.data?.error || '上传失败' } : p
             )
           );
         }
@@ -271,19 +277,30 @@ export default function HomePage() {
               <div className="p-4 border-b border-gray-200 dark:border-slate-700">
                 <h3 className="font-semibold text-gray-900 dark:text-white">上传进度</h3>
               </div>
-              <div className="p-4 space-y-2">
+              <div className="p-4 space-y-3">
                 {uploadProgress.map((item, index) => (
-                  <div key={index} className="flex items-center gap-3 text-sm">
-                    {item.success ? (
-                      <CheckCircle className="w-4 h-4 text-green-500" />
-                    ) : item.error ? (
-                      <AlertCircle className="w-4 h-4 text-red-500" />
-                    ) : (
-                      <Loader2 className="w-4 h-4 text-primary-600 animate-spin" />
+                  <div key={index}>
+                    <div className="flex items-center gap-3 text-sm mb-1">
+                      {item.success ? (
+                        <CheckCircle className="w-4 h-4 text-green-500" />
+                      ) : item.error ? (
+                        <AlertCircle className="w-4 h-4 text-red-500" />
+                      ) : (
+                        <Loader2 className="w-4 h-4 text-primary-600 animate-spin" />
+                      )}
+                      <span className="text-gray-600 dark:text-gray-400 flex-1 truncate">{item.name}</span>
+                      {item.success && <span className="text-green-500">上传成功</span>}
+                      {item.error && <span className="text-red-500">{item.error}</span>}
+                      {!item.success && !item.error && <span className="text-primary-600">{item.progress}%</span>}
+                    </div>
+                    {!item.success && !item.error && (
+                      <div className="ml-7 h-1.5 bg-gray-200 dark:bg-slate-600 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-primary-600 rounded-full transition-all duration-300"
+                          style={{ width: `${item.progress}%` }}
+                        />
+                      </div>
                     )}
-                    <span className="text-gray-600 dark:text-gray-400 flex-1 truncate">{item.name}</span>
-                    {item.success && <span className="text-green-500">上传成功</span>}
-                    {item.error && <span className="text-red-500">{item.error}</span>}
                   </div>
                 ))}
               </div>

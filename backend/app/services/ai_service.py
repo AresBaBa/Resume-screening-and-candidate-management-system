@@ -153,8 +153,8 @@ def parse_resume_with_ai_v2(raw_text: str) -> Dict[str, Any]:
     "birthday": "生日/年龄",
     "email": "邮箱",
     "phone": "电话",
-    "city": "所在城市",
-    "summary": "个人简介/求职意向",
+    "city": "所在城市（重要：如果简历中明确提到期望工作城市、求职意向中的城市、或现居城市，这些都属于所在城市。请务必从以下位置查找：1.简历顶部的个人信息 2.求职意向 3.个人简介 4.任何提及城市的地方。如果实在找不到返回null。）",
+    "summary": "个人简介/求职意向（包含期望城市、期望薪资、岗位等信息）",
     "skills": ["技能1", "技能2"],
     "experience": [
         {{"title": "职位名称", "company": "公司名称", "dates": "工作时间", "description": "工作描述"}}
@@ -164,13 +164,14 @@ def parse_resume_with_ai_v2(raw_text: str) -> Dict[str, Any]:
     ],
     "projects": [
         {{"name": "项目名称", "role": "个人职责", "tech": "技术栈", "description": "项目描述"}}
-    ]
+    ],
+    "score": "综合评分(0-100整数，根据教育背景、工作经验、技能匹配度、项目经历等进行客观评分)"
 }}
 
 只返回JSON，不要有任何其他内容。"""
 
         messages = [
-            {"role": "system", "content": "你是一个专业的简历解析助手，擅长从简历文本中提取结构化信息。"},
+            {"role": "system", "content": "你是一个专业的简历解析助手，擅长从简历文本中提取结构化信息。你需要从简历中准确提取个人信息，包括姓名、联系方式、教育背景、工作经验、技能等。对于城市信息，你需要从求职意向、个人简介或任何提及的位置查找。务必返回完整、准确的JSON数据。"},
             {"role": "user", "content": prompt}
         ]
 

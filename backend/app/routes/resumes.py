@@ -3,6 +3,9 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
 import os
 import uuid
+import hashlib
+import string
+import random
 from app import db
 from app.models import Resume, User
 from app.services.resume_parser import parse_resume, parse_resume_with_ai, get_resume_thumbnail
@@ -13,6 +16,22 @@ ALLOWED_EXTENSIONS = {'pdf', 'docx'}
 UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', '/tmp/uploads')
 
 
+def generate_unique_code():
+    """生成6位唯一编码"""
+    chars = string.ascii_uppercase + string.digits
+    return ''.join(random.choices(chars, k=6))
+
+
+def calculate_file_hash(file) -> str:
+    """计算文件内容哈希值"""
+    hash_md5 = hashlib.md5()
+    file.seek(0)
+    for chunk in iter(lambda: file.read(4096), b''):
+        hash_md5.update(chunk)
+    file.seek(0)
+    return hash_md5.hexdigest()
+
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -20,8 +39,61 @@ def allowed_file(filename):
 def save_and_parse_resume(file, user_id):
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     
-    filename = secure_filename(file.filename)
-    ext = filename.rsplit('.', 1)[1].lower()
+    original_filename = file.filename
+    ext = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else 'pdf'
+    
+    file_hash = calculate_file_hash(file)
+    print(f"tazlyx debug: File hash: {file_hash}")
+    
+    existing_resume = Resume.query.filter_by(file_hash=file_hash).first()
+    if existing_resume and os.path.exists(existing_resume.file_path):
+        print(f"tazlyx debug: Found existing resume with same hash, re-parsing: {existing_resume.id}")
+        existing_resume.parsing_status = 'processing'
+        db.session.flush()
+        
+        try:
+            parsed_data = parse_resume_with_ai(existing_resume.file_path)
+            
+            existing_resume.parsed_data = parsed_data.get('raw_text', '')
+            structured = parsed_data.get('structured', {})
+            existing_resume.ai_summary = structured.get('summary', '')
+            existing_resume.ai_skills = structured.get('skills', [])
+            existing_resume.ai_experience = structured.get('experience', [])
+            existing_resume.ai_education = structured.get('education', [])
+            existing_resume.ai_projects = structured.get('projects', [])
+            
+            contact = {
+                'email': structured.get('email'),
+                'phone': structured.get('phone'),
+                'name': structured.get('name'),
+                'gender': structured.get('gender'),
+                'birthday': structured.get('birthday'),
+                'city': structured.get('city')
+            }
+            existing_resume.ai_contact = contact
+            existing_resume.ai_structured = structured
+            
+            score_value = structured.get('score')
+            if score_value is not None:
+                try:
+                    existing_resume.ai_score = float(score_value) if isinstance(score_value, (int, float)) else float(str(score_value).strip())
+                    if existing_resume.ai_score > 100:
+                        existing_resume.ai_score = 100
+                    elif existing_resume.ai_score < 0:
+                        existing_resume.ai_score = 0
+                except (ValueError, TypeError):
+                    existing_resume.ai_score = None
+            
+            print(f"tazlyx debug: Resume re-parsed - name: {contact.get('name')}, score: {existing_resume.ai_score}")
+            existing_resume.parsing_status = 'completed'
+            
+        except Exception as e:
+            print(f"tazlyx debug: Resume re-parsing error: {str(e)}")
+            existing_resume.parsing_status = 'failed'
+            existing_resume.parsed_data = str(e)
+        
+        return existing_resume
+    
     unique_filename = f"{uuid.uuid4()}.{ext}"
     file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
     
@@ -31,12 +103,16 @@ def save_and_parse_resume(file, user_id):
     file_size = file.tell()
     file.seek(0)
     
+    unique_code = generate_unique_code()
+    
     resume = Resume(
         user_id=user_id,
-        file_name=filename,
+        file_name=original_filename,
         file_path=file_path,
         file_type=ext,
         file_size=file_size,
+        file_hash=file_hash,
+        unique_code=unique_code,
         parsing_status='processing'
     )
     
@@ -44,7 +120,7 @@ def save_and_parse_resume(file, user_id):
     db.session.flush()
     
     try:
-        print(f"tazlyx debug: Parsing resume: {filename}")
+        print(f"tazlyx debug: Parsing resume: {original_filename}")
         parsed_data = parse_resume_with_ai(file_path)
         print(f"tazlyx debug: Parsing result keys: {list(parsed_data.keys())}")
         
@@ -67,7 +143,18 @@ def save_and_parse_resume(file, user_id):
         resume.ai_contact = contact
         resume.ai_structured = structured
         
-        print(f"tazlyx debug: Resume parsed - name: {contact.get('name')}, skills: {resume.ai_skills}")
+        score_value = structured.get('score')
+        if score_value is not None:
+            try:
+                resume.ai_score = float(score_value) if isinstance(score_value, (int, float)) else float(str(score_value).strip())
+                if resume.ai_score > 100:
+                    resume.ai_score = 100
+                elif resume.ai_score < 0:
+                    resume.ai_score = 0
+            except (ValueError, TypeError):
+                resume.ai_score = None
+        
+        print(f"tazlyx debug: Resume parsed - name: {contact.get('name')}, skills: {resume.ai_skills}, score: {resume.ai_score}")
         resume.parsing_status = 'completed'
         
     except Exception as e:
