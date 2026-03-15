@@ -15,6 +15,7 @@ interface ResumeCardData {
   status: 'pending' | 'uploading' | 'analyzing' | 'completed' | 'error';
   progress: number;
   progressMessages: string[];
+  thinkingContent?: string;
   error?: string;
   resumeData?: any;
 }
@@ -214,6 +215,19 @@ export default function HomePage() {
           return card;
         })
       );
+    } else if (data.type === 'thinking') {
+      setCardData((prev) =>
+        prev.map((card) => {
+          if (card.name === data.file) {
+            return {
+              ...card,
+              status: 'analyzing',
+              thinkingContent: (card.thinkingContent || '') + (data.message || ''),
+            };
+          }
+          return card;
+        })
+      );
     } else if (data.type === 'complete') {
       setCardData((prev) =>
         prev.map((card) =>
@@ -376,9 +390,9 @@ export default function HomePage() {
                 </button> */}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4" style={{ aspectRatio: '4/3' }}>
+              <div className={`grid grid-cols-1 ${cardData.length > 1 ? 'md:grid-cols-2' : ''} gap-4`}>
                 {cardData.map((card) => (
-                  <div key={card.id} style={{ minHeight: '280px' }}>
+                  <div key={card.id} className={`h-[600px] ${cardData.length === 1 ? 'max-w-4xl mx-auto w-full' : ''}`}>
                     <ResumeCard
                       data={card}
                       onRemove={!processing ? handleRemoveCard : undefined}

@@ -22,7 +22,8 @@ class Config:
 
     DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY', '')
     DEEPSEEK_URL = os.environ.get('DEEPSEEK_API_BASE', 'https://api.deepseek.com/chat/completions')
-    DEEPSEEK_MODEL = os.environ.get('DEEPSEEK_MODEL', 'deepseek-chat')
+    DEEPSEEK_MODEL_CHAT = os.environ.get('DEEPSEEK_MODEL_CHAT', 'deepseek-chat')
+    DEEPSEEK_MODEL_REASONER = os.environ.get('DEEPSEEK_MODEL_REASONER', 'deepseek-reasoner')
 
     ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
     ANTHROPIC_MODEL = os.environ.get('ANTHROPIC_MODEL', 'claude-3-haiku-20240307')

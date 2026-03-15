@@ -23,13 +23,20 @@ class OpenAICompatibleService(AIService):
     """OpenAI 兼容 API 服务（支持 DeepSeek、OpenAI、X.AI 等）"""
 
     def chat(self, messages: List[Dict[str, str]], **kwargs) -> str:
+        # 根据模型动态设置 max_tokens
+        # deepseek-chat 的 max_tokens 范围是 [1, 8192]
+        # deepseek-reasoner 可以支持到更大 (通常建议 32000)
+        default_max_tokens = 8192 if self.model == "deepseek-chat" else 32000
+        
         payload = {
             "model": self.model,
             "messages": messages,
-            "temperature": kwargs.get("temperature", 0.1),
-            "max_tokens": kwargs.get("max_tokens", 2000),
+            "max_tokens": kwargs.get("max_tokens", default_max_tokens),
             "stream": False
         }
+        temp = kwargs.get("temperature", 0.1)
+        if temp and self.model != "deepseek-reasoner":
+            payload["temperature"] = temp
 
         data = json.dumps(payload).encode("utf-8")
         req = Request(self.base_url, data=data, method="POST")
@@ -62,6 +69,88 @@ class OpenAICompatibleService(AIService):
             print(f"tazlyx debug: AI API error: {str(e)}")
             raise Exception(f"API error: {str(e)}")
 
+    def chat_stream(self, messages: List[Dict[str, str]], callback=None, **kwargs):
+        """流式调用 AI，返回 reasoning_content 和 content"""
+        import urllib.request
+        import time
+        
+        # 根据模型动态设置 max_tokens
+        # deepseek-chat 的 max_tokens 范围是 [1, 8192]
+        # deepseek-reasoner 可以支持到更大 (通常建议 32000)
+        default_max_tokens = 8192 if self.model == "deepseek-chat" else 32000
+        
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": kwargs.get("max_tokens", default_max_tokens),
+            "stream": True
+        }
+        temp = kwargs.get("temperature", 0.1)
+        if temp and self.model != "deepseek-reasoner":
+            payload["temperature"] = temp
+
+        data = json.dumps(payload).encode("utf-8")
+        req = Request(self.base_url, data=data, method="POST")
+        req.add_header("Authorization", f"Bearer {self.api_key}")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("Accept", "text/event-stream")
+
+        print(f"tazlyx debug: AI Stream Request - url: {self.base_url}, model: {self.model}")
+
+        reasoning_content = ""
+        content = ""
+        
+        try:
+            response = urllib.request.urlopen(req, timeout=kwargs.get("timeout", 120))
+            reader = responsefp = response
+            
+            while True:
+                line = responsefp.readline()
+                if not line:
+                    break
+                
+                line = line.decode("utf-8").strip()
+                if not line.startswith("data: "):
+                    continue
+                
+                data_str = line[6:]
+                if data_str == "[DONE]":
+                    break
+                
+                try:
+                    chunk_data = json.loads(data_str)
+                    # print(f"tazlyx debug: AI chunk: {json.dumps(chunk_data)[:200]}...")
+                    delta = chunk_data.get("choices", [{}])[0].get("delta", {})
+                    
+                    reasoning = delta.get("reasoning_content") or delta.get("reasoning")
+                    text_content = delta.get("content")
+                    
+                    if reasoning:
+                        reasoning_content += reasoning
+                        if callback:
+                            callback({"type": "reasoning", "content": reasoning})
+                    
+                    if text_content:
+                        content += text_content
+                        if callback:
+                            callback({"type": "content", "content": text_content})
+                            
+                except json.JSONDecodeError:
+                    continue
+            
+            return {"reasoning": reasoning_content, "content": content}
+            
+        except HTTPError as e:
+            error_body = e.read().decode("utf-8", errors="ignore")
+            print(f"tazlyx debug: AI Stream HTTP error - status: {e.code}, body: {error_body}")
+            raise Exception(f"API HTTP error: {e.code} - {error_body}")
+        except URLError as e:
+            print(f"tazlyx debug: AI Stream URL error: {str(e)}")
+            raise Exception(f"API URL error: {str(e)}")
+        except Exception as e:
+            print(f"tazlyx debug: AI Stream error: {str(e)}")
+            raise Exception(f"API error: {str(e)}")
+
 
 class AIServiceFactory:
     """AI 服务工厂 - 支持多平台切换"""
@@ -90,7 +179,7 @@ class AIServiceFactory:
         if provider == "deepseek":
             api_key = Config.DEEPSEEK_API_KEY
             base_url = Config.DEEPSEEK_URL
-            model = Config.DEEPSEEK_MODEL
+            model = Config.DEEPSEEK_MODEL_CHAT
         elif provider == "openai":
             api_key = Config.OPENAI_API_KEY
             base_url = "https://api.openai.com/v1/chat/completions"
@@ -116,6 +205,49 @@ class AIServiceFactory:
     @classmethod
     def get_current_provider(cls) -> str:
         """获取当前使用的 AI 提供商"""
+        return Config.AI_PROVIDER or 'deepseek'
+
+    @classmethod
+    def get_reasoner_service(cls, provider: str = None) -> AIService:
+        """获取支持思考模式的 AI 服务实例（如 DeepSeek Reasoner）"""
+        if provider is None:
+            provider = Config.AI_PROVIDER or 'deepseek'
+        
+        provider = provider.lower()
+        
+        cache_key = f"{provider}_reasoner"
+        if cache_key in cls._services:
+            return cls._services[cache_key]
+
+        if provider == "deepseek":
+            api_key = Config.DEEPSEEK_API_KEY
+            base_url = Config.DEEPSEEK_URL
+            model = Config.DEEPSEEK_MODEL_REASONER
+        elif provider == "openai":
+            api_key = Config.OPENAI_API_KEY
+            base_url = "https://api.openai.com/v1/chat/completions"
+            model = Config.OPENAI_MODEL
+        elif provider == "anthropic":
+            api_key = Config.ANTHROPIC_API_KEY
+            base_url = "https://api.anthropic.com/v1/messages"
+            model = Config.ANTHROPIC_MODEL
+        elif provider == "xai":
+            api_key = Config.XAI_API_KEY
+            base_url = "https://api.x.ai/v1/chat/completions"
+            model = Config.XAI_MODEL
+        else:
+            raise ValueError(f"Unsupported AI provider for reasoning: {provider}")
+
+        if not api_key:
+            raise ValueError(f"API key not configured for {provider}")
+
+        service = OpenAICompatibleService(api_key, base_url, model)
+        cls._services[cache_key] = service
+        return service
+
+    @classmethod
+    def get_reasoner_provider(cls) -> str:
+        """获取当前用于推理的 AI 提供商"""
         return Config.AI_PROVIDER or 'deepseek'
 
     @classmethod
@@ -224,17 +356,17 @@ def match_resume_to_job(resume_data: Dict[str, Any], job_data: Dict[str, Any]) -
         
         service = AIServiceFactory.get_service(provider)
         
-        resume_skills = resume_data.get('skills', [])
-        resume_experience = resume_data.get('experience', [])
-        resume_education = resume_data.get('education', [])
-        resume_summary = resume_data.get('summary', '')
-        resume_city = resume_data.get('city', '')
+        resume_skills = resume_data.get('skills') or []
+        resume_experience = resume_data.get('experience') or []
+        resume_education = resume_data.get('education') or []
+        resume_summary = resume_data.get('summary') or ''
+        resume_city = resume_data.get('city') or ''
         
-        job_title = job_data.get('title', '')
-        job_description = job_data.get('description', '')
-        job_skills_required = job_data.get('skills_required', [])
-        job_skills_preferred = job_data.get('skills_preferred', [])
-        job_requirements = job_data.get('requirements', {})
+        job_title = job_data.get('title') or ''
+        job_description = job_data.get('description') or ''
+        job_skills_required = job_data.get('skills_required') or []
+        job_skills_preferred = job_data.get('skills_preferred') or []
+        job_requirements = job_data.get('requirements') or {}
         
         prompt = f"""你是一个专业的HR招聘助手，擅长评估候选人与岗位的匹配度。请根据以下信息进行评估并返回JSON格式结果。
 

@@ -323,7 +323,7 @@ export default function CandidatesPage() {
                     e.target.value = '';
                   }
                 }}
-                className="input py-1 text-sm w-32"
+                className="input py-1 text-sm w-40"
                 defaultValue=""
               >
                 <option value="">批量修改状态</option>

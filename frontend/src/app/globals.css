@@ -80,3 +80,17 @@ body {
     border-radius: 3px;
   }
 }
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* 隐藏 Next.js 开发环境的 Static route / Dynamic route 提示条 */
+next-route-announcer {
+  display: none !important;
+}

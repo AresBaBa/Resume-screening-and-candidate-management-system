@@ -66,13 +66,13 @@ def save_and_parse_resume(file, user_id):
             try:
                 parsed_data = parse_resume_with_ai(existing_resume.file_path)
                 
-                existing_resume.parsed_data = parsed_data.get('raw_text', '')
-                structured = parsed_data.get('structured', {})
-                existing_resume.ai_summary = structured.get('summary', '')
-                existing_resume.ai_skills = structured.get('skills', [])
-                existing_resume.ai_experience = structured.get('experience', [])
-                existing_resume.ai_education = structured.get('education', [])
-                existing_resume.ai_projects = structured.get('projects', [])
+                existing_resume.parsed_data = parsed_data.get('raw_text') or ''
+                structured = parsed_data.get('structured') or {}
+                existing_resume.ai_summary = structured.get('summary') or ''
+                existing_resume.ai_skills = structured.get('skills') or []
+                existing_resume.ai_experience = structured.get('experience') or []
+                existing_resume.ai_education = structured.get('education') or []
+                existing_resume.ai_projects = structured.get('projects') or []
                 
                 contact = {
                     'email': structured.get('email'),
@@ -135,13 +135,13 @@ def save_and_parse_resume(file, user_id):
         parsed_data = parse_resume_with_ai(file_path)
         print(f"tazlyx debug: Parsing result keys: {list(parsed_data.keys())}")
         
-        resume.parsed_data = parsed_data.get('raw_text', '')
-        structured = parsed_data.get('structured', {})
-        resume.ai_summary = structured.get('summary', '')
-        resume.ai_skills = structured.get('skills', [])
-        resume.ai_experience = structured.get('experience', [])
-        resume.ai_education = structured.get('education', [])
-        resume.ai_projects = structured.get('projects', [])
+        resume.parsed_data = parsed_data.get('raw_text') or ''
+        structured = parsed_data.get('structured') or {}
+        resume.ai_summary = structured.get('summary') or ''
+        resume.ai_skills = structured.get('skills') or []
+        resume.ai_experience = structured.get('experience') or []
+        resume.ai_education = structured.get('education') or []
+        resume.ai_projects = structured.get('projects') or []
         
         contact = {
             'email': structured.get('email'),
@@ -390,15 +390,17 @@ def reparse_resume(resume_id):
         
         resume.parsed_data = parsed_data.get('raw_text', '')
         structured = parsed_data.get('structured', {})
-        resume.ai_summary = structured.get('summary', '')
-        resume.ai_skills = structured.get('skills', [])
-        resume.ai_experience = structured.get('experience', [])
-        resume.ai_education = structured.get('education', '')
+        resume.ai_summary = structured.get('summary') or ''
+        resume.ai_skills = structured.get('skills') or []
+        resume.ai_experience = structured.get('experience') or []
+        resume.ai_education = structured.get('education') or []
+        resume.ai_projects = structured.get('projects') or []
         
         contact = {
             'email': structured.get('email'),
             'phone': structured.get('phone'),
-            'name': structured.get('name')
+            'name': structured.get('name'),
+            'city': structured.get('city')
         }
         resume.ai_contact = contact
         
@@ -516,6 +518,8 @@ def stream_upload_resume():
                     msg_type, data = q.get()
                     if msg_type == 'progress':
                         yield f"data: {json.dumps({'type': 'progress', 'file': file_data_list[idx]['filename'], 'message': data})}\n\n"
+                    elif msg_type == 'thinking':
+                        yield f"data: {json.dumps({'type': 'thinking', 'file': file_data_list[idx]['filename'], 'message': data})}\n\n"
                     elif msg_type == 'complete':
                         yield f"data: {json.dumps({'type': 'complete', 'file': file_data_list[idx]['filename'], 'resume': data})}\n\n"
                     elif msg_type == 'error':
@@ -527,6 +531,8 @@ def stream_upload_resume():
                 msg_type, data = q.get()
                 if msg_type == 'progress':
                     yield f"data: {json.dumps({'type': 'progress', 'file': file_data_list[idx]['filename'], 'message': data})}\n\n"
+                elif msg_type == 'thinking':
+                    yield f"data: {json.dumps({'type': 'thinking', 'file': file_data_list[idx]['filename'], 'message': data})}\n\n"
                 elif msg_type == 'complete':
                     yield f"data: {json.dumps({'type': 'complete', 'file': file_data_list[idx]['filename'], 'resume': data})}\n\n"
                 elif msg_type == 'error':
@@ -545,7 +551,10 @@ def save_and_parse_resume_stream(file, user_id, progress_queue):
     from app import db
     
     def progress_callback(msg):
-        progress_queue.put(('progress', msg))
+        if isinstance(msg, dict) and msg.get("type") == "thinking":
+            progress_queue.put(("thinking", msg.get("content", "")))
+        else:
+            progress_queue.put(("progress", msg))
     
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     
@@ -586,13 +595,13 @@ def save_and_parse_resume_stream(file, user_id, progress_queue):
         progress_callback(f"开始AI解析简历...")
         parsed_data = parse_resume_with_ai_stream(file_path, progress_callback)
         
-        resume.parsed_data = parsed_data.get('raw_text', '')
-        structured = parsed_data.get('structured', {})
-        resume.ai_summary = structured.get('summary', '')
-        resume.ai_skills = structured.get('skills', [])
-        resume.ai_experience = structured.get('experience', [])
-        resume.ai_education = structured.get('education', [])
-        resume.ai_projects = structured.get('projects', [])
+        resume.parsed_data = parsed_data.get('raw_text') or ''
+        structured = parsed_data.get('structured') or {}
+        resume.ai_summary = structured.get('summary') or ''
+        resume.ai_skills = structured.get('skills') or []
+        resume.ai_experience = structured.get('experience') or []
+        resume.ai_education = structured.get('education') or []
+        resume.ai_projects = structured.get('projects') or []
         
         contact = {
             'email': structured.get('email'),

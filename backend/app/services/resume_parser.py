@@ -434,7 +434,7 @@ def parse_resume_with_ai_stream(file_path: str, progress_callback=None) -> dict:
         if progress_callback:
             progress_callback(f"正在调用 {provider} AI 分析...")
         
-        service = AIServiceFactory.get_service(provider)
+        service = AIServiceFactory.get_reasoner_service(provider)
 
         prompt = f"""请从以下简历文本中提取结构化信息，返回纯JSON格式，不要添加任何解释或markdown标记：
 
@@ -473,9 +473,16 @@ def parse_resume_with_ai_stream(file_path: str, progress_callback=None) -> dict:
         if progress_callback:
             progress_callback("AI 正在分析简历内容...")
         
-        print(f"tazlyx debug: Calling AI API...")
-        content = service.chat(messages)
-
+        print(f"tazlyx debug: Calling AI Stream API...")
+        
+        def stream_callback(chunk):
+            if chunk["type"] == "reasoning":
+                if progress_callback:
+                    progress_callback({"type": "thinking", "content": chunk["content"]})
+        
+        result = service.chat_stream(messages, callback=stream_callback)
+        content = result.get("content", "")
+        
         print(f"tazlyx debug: AI response: {content[:200]}...")
 
         if progress_callback:

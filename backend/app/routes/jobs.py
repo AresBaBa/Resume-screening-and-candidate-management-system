@@ -159,11 +159,13 @@ def match_job_resumes(job_id):
             'city': (resume.ai_contact or {}).get('city', '')
         }
         
-        print(f"tazlyx debug: Matching resume {resume.id} - {resume.ai_contact.get('name') if resume.ai_contact else 'Unknown'}")
+        contact = resume.ai_contact if isinstance(resume.ai_contact, dict) else {}
+        print(f"tazlyx debug: Matching resume {resume.id} - {contact.get('name') if contact else 'Unknown'}")
         
         matching_result = match_resume_to_job(resume_data, job_data)
         
-        contact = resume.ai_contact or {}
+        # 使用上面判断过的 contact
+        # contact = resume.ai_contact or {} 
         
         if existing:
             existing.matching_score = matching_result.get('matching_score', 0)

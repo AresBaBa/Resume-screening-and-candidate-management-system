@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef, useEffect } from 'react';
 import { FileText, CheckCircle, AlertCircle, Loader2, X, Sparkles, User, Briefcase, GraduationCap, Code, FolderOpen } from 'lucide-react';
 
 interface ResumeCardData {
@@ -9,6 +10,7 @@ interface ResumeCardData {
   status: 'pending' | 'uploading' | 'analyzing' | 'completed' | 'error';
   progress: number;
   progressMessages: string[];
+  thinkingContent?: string;
   error?: string;
   resumeData?: any;
 }
@@ -20,6 +22,14 @@ interface ResumeCardProps {
 }
 
 export default function ResumeCard({ data, onRemove, onView }: ResumeCardProps) {
+  const thinkingRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (thinkingRef.current && data.thinkingContent) {
+      thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight;
+    }
+  }, [data.thinkingContent]);
+
   const getStatusIcon = () => {
     switch (data.status) {
       case 'uploading':
@@ -131,6 +141,20 @@ export default function ResumeCard({ data, onRemove, onView }: ResumeCardProps) 
                     <span>{msg}</span>
                   </div>
                 ))}
+              </div>
+            )}
+            {data.thinkingContent && data.status === 'analyzing' && (
+              <div 
+                ref={thinkingRef}
+                className="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs text-blue-600 dark:text-blue-400 max-h-80 overflow-y-auto scrollbar-hide"
+              >
+                <div className="font-medium mb-1 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  AI 思考中...
+                </div>
+                <div className="whitespace-pre-wrap font-mono">
+                  {data.thinkingContent}
+                </div>
               </div>
             )}
           </div>
