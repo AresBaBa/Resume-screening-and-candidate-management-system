@@ -14,6 +14,7 @@ import {
   X,
   LogOut,
   User,
+  Upload,
 } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUserStore } from '@/stores/userStore';
@@ -25,6 +26,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+  { label: '上传简历', href: '/', icon: <Upload size={20} /> },
   { label: '简历管理', href: '/resumes', icon: <FileText size={20} /> },
   { label: '岗位管理', href: '/jobs', icon: <Briefcase size={20} /> },
   { label: '候选人', href: '/candidates', icon: <Users size={20} /> },
@@ -50,6 +52,7 @@ export default function Sidebar() {
     const newValue = !isCollapsed;
     setIsCollapsed(newValue);
     localStorage.setItem('sidebarCollapsed', String(newValue));
+    window.dispatchEvent(new Event('sidebar-toggle'));
   };
 
   const handleLogout = () => {

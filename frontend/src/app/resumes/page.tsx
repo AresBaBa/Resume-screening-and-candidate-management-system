@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, FileText, Trash2, Eye, Download, RefreshCw, Search, Filter, CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react';
+import { Upload, FileText, Trash2, Eye, Download, RefreshCw, Search, Filter, CheckCircle, XCircle, Clock, ArrowLeft } from 'lucide-react';
 import Header from '@/components/Header';
 import { SkeletonResumeCard } from '@/components/Skeleton';
 import { resumeApi } from '@/lib/api';
@@ -17,12 +17,9 @@ const statusConfig = {
 
 export default function ResumesPage() {
   const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const fetchedRef = useRef(false);
   const [resumes, setResumes] = useState<Resume[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [dragActive, setDragActive] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
 
@@ -55,56 +52,7 @@ export default function ResumesPage() {
 
   useEffect(() => {
     fetchResumes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const handleDrag = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setDragActive(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-
-    const files = Array.from(e.dataTransfer.files).filter(
-      (file) => file.type === 'application/pdf' || file.name.endsWith('.pdf')
-    );
-    if (files.length > 0) {
-      await uploadFiles(files);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length > 0) {
-      await uploadFiles(files);
-    }
-  };
-
-  const uploadFiles = async (files: File[]) => {
-    setUploading(true);
-    try {
-      for (const file of files) {
-        const formData = new FormData();
-        formData.append('file', file);
-        await resumeApi.upload(formData);
-      }
-      await fetchResumes();
-    } catch (error) {
-      console.error('上传失败:', error);
-    } finally {
-      setUploading(false);
-    }
-  };
 
   const handleDelete = async (id: number) => {
     if (!confirm('确定要删除这份简历吗？')) return;
@@ -141,48 +89,19 @@ export default function ResumesPage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
       <Header
-        title="简历管理"
+        title="简历列表"
         actions={
           <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="btn btn-primary flex items-center gap-2"
+            onClick={() => router.push('/')}
+            className="btn btn-secondary flex items-center gap-2"
           >
             <Upload size={18} />
-            {uploading ? '上传中...' : '上传简历'}
+            上传简历
           </button>
         }
       />
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".pdf"
-        multiple
-        className="hidden"
-        onChange={handleFileSelect}
-      />
 
       <div className="p-6">
-        <div
-          className={`border-2 border-dashed rounded-xl p-8 mb-6 text-center transition-all ${
-            dragActive
-              ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-              : 'border-gray-300 dark:border-slate-600 hover:border-primary-400'
-          }`}
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-        >
-          <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-          <p className="text-lg font-medium text-gray-700 dark:text-gray-300">
-            拖拽PDF文件到此处上传
-          </p>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            或点击上方&quot;上传简历&quot;按钮选择文件
-          </p>
-        </div>
-
         <div className="flex items-center gap-4 mb-6">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -217,9 +136,13 @@ export default function ResumesPage() {
           <div className="text-center py-12">
             <FileText className="mx-auto h-16 w-16 text-gray-300 dark:text-slate-600 mb-4" />
             <p className="text-lg text-gray-500 dark:text-gray-400">暂无简历</p>
-            <p className="mt-2 text-sm text-gray-400 dark:text-gray-500">
-              上传PDF简历开始筛选
-            </p>
+            <button
+              onClick={() => router.push('/')}
+              className="mt-4 btn btn-primary flex items-center gap-2 mx-auto"
+            >
+              <Upload size={18} />
+              上传简历
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -252,45 +175,27 @@ export default function ResumesPage() {
                     </div>
                   </div>
 
-                  {resume.ai_skills && resume.ai_skills.length > 0 && (
-                    <div className="mt-4 flex flex-wrap gap-1.5">
-                      {resume.ai_skills.slice(0, 3).map((skill, index) => (
-                        <span
-                          key={index}
-                          className="px-2 py-0.5 bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 text-xs rounded-full"
-                        >
-                          {skill}
-                        </span>
-                      ))}
-                      {resume.ai_skills.length > 3 && (
-                        <span className="px-2 py-0.5 text-gray-400 text-xs">
-                          +{resume.ai_skills.length - 3}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="mt-4 flex items-center gap-2">
+                  <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100 dark:border-slate-700">
                     <button
                       onClick={() => router.push(`/resumes/${resume.id}`)}
-                      className="flex-1 btn btn-secondary py-1.5 text-sm flex items-center justify-center gap-1.5"
+                      className="flex-1 btn btn-secondary py-1.5 flex items-center justify-center gap-1.5 text-sm"
                     >
                       <Eye size={14} />
                       查看
                     </button>
                     <button
                       onClick={() => handleReparse(resume.id)}
-                      className="p-1.5 btn btn-secondary"
+                      className="p-1.5 text-gray-400 hover:text-blue-500 dark:text-slate-500 dark:hover:text-blue-400 transition-colors"
                       title="重新解析"
                     >
-                      <RefreshCw size={14} />
+                      <RefreshCw size={16} />
                     </button>
                     <button
                       onClick={() => handleDelete(resume.id)}
-                      className="p-1.5 btn btn-secondary text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                      className="p-1.5 text-gray-400 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400 transition-colors"
                       title="删除"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={16} />
                     </button>
                   </div>
                 </div>

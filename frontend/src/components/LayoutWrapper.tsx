@@ -17,7 +17,7 @@ export default function LayoutWrapper({ children }: LayoutWrapperProps) {
   const [mounted, setMounted] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  const publicPaths = ['/login', '/register', '/'];
+  const publicPaths = ['/login', '/register'];
 
   useGlobalHotkeys();
 
