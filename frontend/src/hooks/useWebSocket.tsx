@@ -9,7 +9,7 @@ import { useUserStore } from '@/stores/userStore';
  */
 export interface Notification {
   id: string;
-  type: 'info' | 'success' | 'error' | 'match_complete';
+  type: 'info' | 'success' | 'error' | 'match_complete' | 'resume_uploaded';
   title: string;
   message: string;
   jobId?: number;

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, FileText, User, Mail, Phone, MapPin, Briefcase, GraduationCap, Code, Folder, Save, Edit2, X, Check, Download } from 'lucide-react';
 import Header from '@/components/Header';
 import { Skeleton } from '@/components/Skeleton';
-import { resumeApi } from '@/lib/api';
+import { resumeApi } from '@/lib/api/index';
 import { useUserStore } from '@/stores/userStore';
 import { Resume, Contact, Experience, Education, Project as ProjectType } from '@/types';
 import axios from 'axios';

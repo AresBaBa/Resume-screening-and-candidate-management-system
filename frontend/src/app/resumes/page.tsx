@@ -7,7 +7,7 @@ import Header from '@/components/Header';
 import { Popconfirm } from '@/components/Popconfirm';
 import { SkeletonResumeCard } from '@/components/Skeleton';
 import { Pagination } from '@/components/Pagination';
-import { resumeApi } from '@/lib/api';
+import { resumeApi } from '@/lib/api/index';
 import { Resume } from '@/types';
 
 const statusConfig = {

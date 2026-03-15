@@ -11,6 +11,7 @@ import os
 load_dotenv()
 
 from config import config
+from app.middleware import register_error_handlers, setup_request_logging
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -54,4 +55,7 @@ def create_app(config_name='default'):
     def health_check():
         return {'status': 'healthy', 'service': 'resume-screening-api'}
 
+    register_error_handlers(app)
+    setup_request_logging(app)
+    
     return app

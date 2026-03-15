@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Mail, Lock, Eye, EyeOff, User, Phone, AlertCircle } from 'lucide-react';
-import { authApi } from '@/lib/api';
+import { authApi } from '@/lib/api/index';
 import { useUserStore } from '@/stores/userStore';
 
 export default function LoginPage() {

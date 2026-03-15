@@ -1,0 +1,61 @@
+SHELL := /bin/bash
+
+PROJECT_NAME := xczs
+IMAGE_NAME := xczs
+
+SERVER_HOST := 47.120.68.8
+SERVER_USER := ubuntu
+SERVER_DIR := /usr/local/src/project/xczs
+SSH_KEY := ~/.ssh/id_rsa
+TAGS_OPT ?= latest
+
+.PHONY: help build-web build-admin build deploy
+
+help:
+	@echo "简历筛选与候选人管理系统 - Mac 部署脚本"
+	@echo ""
+	@echo "可用命令:"
+	@echo "  make build-web    - 构建前端 (Next.js)"
+	@echo "  make build-admin - 构建管理后台 (Vue)"
+	@echo "  make build       - 构建所有前端"
+	@echo "  make deploy      - 部署到服务器"
+
+build-web:
+	@echo "tazlyx debug: 构建前端..."
+	cd frontend && npm config set registry https://registry.npmmirror.com && npm install && npm run build
+
+build-admin:
+	@echo "tazlyx debug: 构建管理后台..."
+	cd admin && npm config set registry https://registry.npmmirror.com && npm install && npm run build
+
+build: build-web build-admin
+
+deploy:
+	@echo "tazlyx debug: 部署到服务器 $(SERVER_HOST)..."
+	@echo "tazlyx debug: 打包编译远程发布版本..."
+	rm -rf tmp_build && mkdir -p tmp_build && \
+	mkdir -p tmp_build/deploy/docker-compose && \
+	cp -r deploy/docker-compose/* tmp_build/deploy/docker-compose/ && \
+	cp deploy/Dockerfile.backend tmp_build/deploy/ && \
+	cp deploy/Dockerfile.frontend tmp_build/deploy/ && \
+	cp deploy/Dockerfile.admin tmp_build/deploy/ && \
+	cp -r frontend tmp_build/ && \
+	cp -r admin tmp_build/ && \
+	cp -r backend tmp_build/ && \
+	cp docker/docker-compose.yml tmp_build/deploy/ 2>/dev/null || true
+	@echo "tazlyx debug: 同步文件到服务器..."
+	rsync -avz --progress -e "ssh -i $(SSH_KEY) -o StrictHostKeyChecking=no" \
+		--rsync-path="mkdir -p $(SERVER_DIR) && rsync" \
+		tmp_build/ $(SERVER_USER)@$(SERVER_HOST):$(SERVER_DIR)/
+	@echo "tazlyx debug: 服务器构建并启动服务..."
+	ssh -i $(SSH_KEY) -o StrictHostKeyChecking=no $(SERVER_USER)@$(SERVER_HOST) " \
+		cd $(SERVER_DIR)/deploy/docker-compose && \
+		docker-compose down && \
+		docker-compose up -d --build && \
+		docker system prune -f"
+	rm -rf tmp_build
+	@echo "tazlyx debug: 部署完成!"
+	@echo "访问地址:"
+	@echo "  - Frontend: http://$(SERVER_HOST):3000"
+	@echo "  - Admin: http://$(SERVER_HOST):8080"
+	@echo "  - Backend: http://$(SERVER_HOST):5000"

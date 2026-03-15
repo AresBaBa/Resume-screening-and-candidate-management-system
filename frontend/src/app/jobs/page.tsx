@@ -8,7 +8,7 @@ import { Popconfirm } from '@/components/Popconfirm';
 import { SkeletonJobCard } from '@/components/Skeleton';
 import { useToast } from '@/components/Toast';
 import { Pagination } from '@/components/Pagination';
-import { jobApi } from '@/lib/api';
+import { jobApi } from '@/lib/api/index';
 import { Job } from '@/types';
 import { useWebSocket } from '@/hooks/useWebSocket';
 

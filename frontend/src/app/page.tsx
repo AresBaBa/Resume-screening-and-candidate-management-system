@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Upload, FileText, FolderOpen, ArrowRight, X, Plus, Keyboard, Loader2 } from 'lucide-react';
 import Header from '@/components/Header';
 import ResumeCard from '@/components/ResumeCard';
-import { resumeApi, StreamUploadMessage } from '@/lib/api';
+import { resumeApi, StreamUploadMessage } from '@/lib/api/index';
 import { useUserStore } from '@/stores/userStore';
 
 interface ResumeCardData {

@@ -11,7 +11,7 @@ import Header from '@/components/Header';
 import { Skeleton } from '@/components/Skeleton';
 import { Pagination } from '@/components/Pagination';
 import axios from 'axios';
-import { jobApi, candidateApi } from '@/lib/api';
+import { jobApi, candidateApi } from '@/lib/api/index';
 import { useUserStore } from '@/stores/userStore';
 import { JobApplication, Job } from '@/types';
 
