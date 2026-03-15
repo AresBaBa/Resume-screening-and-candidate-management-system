@@ -70,14 +70,14 @@ export default function Header({ title, subtitle, actions }: HeaderProps) {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <div className="relative">
+          {/* <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
               placeholder="搜索..."
               className="pl-10 pr-4 py-2 w-64 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
-          </div>
+          </div> */}
           <div className="relative">
             <button
               onClick={() => {

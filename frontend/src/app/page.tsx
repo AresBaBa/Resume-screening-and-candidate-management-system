@@ -65,13 +65,18 @@ export default function HomePage() {
   };
 
   const addFiles = (files: File[]) => {
+    const MAX_FILES = 5;
     const newFiles: SelectedFile[] = files.map((file) => ({
       id: Math.random().toString(36).substr(2, 9),
       file,
       name: file.name,
       size: file.size,
     }));
-    setSelectedFiles((prev) => [...prev, ...newFiles]);
+    setSelectedFiles((prev) => {
+      const remainingSlots = MAX_FILES - prev.length;
+      if (remainingSlots <= 0) return prev;
+      return [...prev, ...newFiles].slice(0, MAX_FILES);
+    });
   };
 
   const removeFile = (id: string) => {
@@ -210,15 +215,19 @@ export default function HomePage() {
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
               <div className="p-4 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between">
                 <h3 className="font-semibold text-gray-900 dark:text-white">
-                  已选择 {selectedFiles.length} 个文件
+                  已选择 {selectedFiles.length}/5 个文件
                 </h3>
-                <button
-                  onClick={handleDragClick}
-                  className="btn btn-secondary py-1.5 flex items-center gap-1.5 text-sm"
-                >
-                  <Plus size={16} />
-                  继续添加
-                </button>
+                {selectedFiles.length < 5 ? (
+                  <button
+                    onClick={handleDragClick}
+                    className="btn btn-secondary py-1.5 flex items-center gap-1.5 text-sm"
+                  >
+                    <Plus size={16} />
+                    继续添加
+                  </button>
+                ) : (
+                  <span className="text-sm text-orange-500">已达到最大数量</span>
+                )}
               </div>
               <div className="p-4 space-y-2 max-h-64 overflow-y-auto">
                 {selectedFiles.map((file) => (

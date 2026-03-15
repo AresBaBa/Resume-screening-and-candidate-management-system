@@ -47,7 +47,6 @@ class Resume(db.Model):
     file_type = db.Column(db.String(10), comment='文件类型: pdf/docx')
     file_size = db.Column(db.Integer, comment='文件大小(字节)')
     file_hash = db.Column(db.String(64), nullable=True, comment='文件哈希值')
-    unique_code = db.Column(db.String(16), nullable=True, comment='唯一编码')
     parsing_status = db.Column(db.String(20), default='pending', comment='解析状态: pending/processing/completed/failed')
     parsed_data = db.Column(db.Text, comment='解析后的原始文本')
     ai_summary = db.Column(db.Text, comment='AI提取的个人简介')
@@ -73,7 +72,6 @@ class Resume(db.Model):
             'file_type': self.file_type,
             'file_size': self.file_size,
             'file_hash': self.file_hash,
-            'unique_code': self.unique_code,
             'parsing_status': self.parsing_status,
             'parsed_data': self.parsed_data,
             'ai_summary': self.ai_summary,

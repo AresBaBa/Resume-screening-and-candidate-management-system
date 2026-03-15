@@ -171,6 +171,22 @@ export default function ResumeDetailPage() {
     }
   };
 
+  const [reparsing, setReparsing] = useState(false);
+
+  const handleReparse = async () => {
+    if (!resume) return;
+    
+    setReparsing(true);
+    try {
+      const response = await resumeApi.reparse(resumeId);
+      setResume(response.data.resume);
+    } catch (error) {
+      console.error('重新解析失败:', error);
+    } finally {
+      setReparsing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
@@ -489,9 +505,22 @@ export default function ResumeDetailPage() {
                 操作
               </h3>
               <div className="space-y-2">
-                <button className="w-full btn btn-secondary flex items-center justify-center gap-2">
-                  <Folder size={16} />
-                  重新解析
+                <button 
+                  onClick={handleReparse}
+                  disabled={reparsing}
+                  className="w-full btn btn-secondary flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {reparsing ? (
+                    <>
+                      <span className="animate-spin">⟳</span>
+                      解析中...
+                    </>
+                  ) : (
+                    <>
+                      <Folder size={16} />
+                      重新解析
+                    </>
+                  )}
                 </button>
                 <button 
                   onClick={handleDownload}

@@ -1,11 +1,10 @@
 from flask import Blueprint, request, jsonify, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from sqlalchemy import true
 from werkzeug.utils import secure_filename
 import os
 import uuid
 import hashlib
-import string
-import random
 from app import db
 from app.models import Resume, User
 from app.services.resume_parser import parse_resume, parse_resume_with_ai, get_resume_thumbnail
@@ -15,11 +14,9 @@ bp = Blueprint('resumes', __name__, url_prefix='/api/resumes')
 ALLOWED_EXTENSIONS = {'pdf', 'docx'}
 UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', '/tmp/uploads')
 
-
-def generate_unique_code():
-    """生成6位唯一编码"""
-    chars = string.ascii_uppercase + string.digits
-    return ''.join(random.choices(chars, k=6))
+# 测试模式：忽略重复文件检测，允许重复上传相同文件用于测试分页
+TEST_MODE = true
+# TEST_MODE = false
 
 
 def calculate_file_hash(file) -> str:
@@ -37,63 +34,78 @@ def allowed_file(filename):
 
 
 def save_and_parse_resume(file, user_id):
+    """
+    保存并解析简历
+    
+    重复文件检测逻辑:
+    1. 计算上传文件的MD5哈希值
+    2. 查询数据库是否存在相同哈希的简历
+    3. 如果存在:
+       - 测试模式(TEST_MODE): 跳过重复检测，每次都创建新记录
+       - 生产模式: 复用已有文件，重新进行AI解析，更新记录
+    4. 如果不存在: 创建新文件和新记录
+    """
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     
     original_filename = file.filename
     ext = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else 'pdf'
     
+    # 计算文件哈希值，用于检测重复文件
     file_hash = calculate_file_hash(file)
     print(f"tazlyx debug: File hash: {file_hash}")
     
-    existing_resume = Resume.query.filter_by(file_hash=file_hash).first()
-    if existing_resume and os.path.exists(existing_resume.file_path):
-        print(f"tazlyx debug: Found existing resume with same hash, re-parsing: {existing_resume.id}")
-        existing_resume.parsing_status = 'processing'
-        db.session.flush()
-        
-        try:
-            parsed_data = parse_resume_with_ai(existing_resume.file_path)
+    # 检测是否存在相同文件（非测试模式）
+    if not TEST_MODE:
+        existing_resume = Resume.query.filter_by(file_hash=file_hash).first()
+        if existing_resume and os.path.exists(existing_resume.file_path):
+            print(f"tazlyx debug: Found existing resume with same hash, re-parsing: {existing_resume.id}")
+            existing_resume.parsing_status = 'processing'
+            db.session.flush()
             
-            existing_resume.parsed_data = parsed_data.get('raw_text', '')
-            structured = parsed_data.get('structured', {})
-            existing_resume.ai_summary = structured.get('summary', '')
-            existing_resume.ai_skills = structured.get('skills', [])
-            existing_resume.ai_experience = structured.get('experience', [])
-            existing_resume.ai_education = structured.get('education', [])
-            existing_resume.ai_projects = structured.get('projects', [])
+            try:
+                parsed_data = parse_resume_with_ai(existing_resume.file_path)
+                
+                existing_resume.parsed_data = parsed_data.get('raw_text', '')
+                structured = parsed_data.get('structured', {})
+                existing_resume.ai_summary = structured.get('summary', '')
+                existing_resume.ai_skills = structured.get('skills', [])
+                existing_resume.ai_experience = structured.get('experience', [])
+                existing_resume.ai_education = structured.get('education', [])
+                existing_resume.ai_projects = structured.get('projects', [])
+                
+                contact = {
+                    'email': structured.get('email'),
+                    'phone': structured.get('phone'),
+                    'name': structured.get('name'),
+                    'gender': structured.get('gender'),
+                    'birthday': structured.get('birthday'),
+                    'city': structured.get('city')
+                }
+                existing_resume.ai_contact = contact
+                existing_resume.ai_structured = structured
+                
+                score_value = structured.get('score')
+                if score_value is not None:
+                    try:
+                        existing_resume.ai_score = float(score_value) if isinstance(score_value, (int, float)) else float(str(score_value).strip())
+                        if existing_resume.ai_score > 100:
+                            existing_resume.ai_score = 100
+                        elif existing_resume.ai_score < 0:
+                            existing_resume.ai_score = 0
+                    except (ValueError, TypeError):
+                        existing_resume.ai_score = None
+                
+                print(f"tazlyx debug: Resume re-parsed - name: {contact.get('name')}, score: {existing_resume.ai_score}")
+                existing_resume.parsing_status = 'completed'
+                
+            except Exception as e:
+                print(f"tazlyx debug: Resume re-parsing error: {str(e)}")
+                existing_resume.parsing_status = 'failed'
+                existing_resume.parsed_data = str(e)
             
-            contact = {
-                'email': structured.get('email'),
-                'phone': structured.get('phone'),
-                'name': structured.get('name'),
-                'gender': structured.get('gender'),
-                'birthday': structured.get('birthday'),
-                'city': structured.get('city')
-            }
-            existing_resume.ai_contact = contact
-            existing_resume.ai_structured = structured
-            
-            score_value = structured.get('score')
-            if score_value is not None:
-                try:
-                    existing_resume.ai_score = float(score_value) if isinstance(score_value, (int, float)) else float(str(score_value).strip())
-                    if existing_resume.ai_score > 100:
-                        existing_resume.ai_score = 100
-                    elif existing_resume.ai_score < 0:
-                        existing_resume.ai_score = 0
-                except (ValueError, TypeError):
-                    existing_resume.ai_score = None
-            
-            print(f"tazlyx debug: Resume re-parsed - name: {contact.get('name')}, score: {existing_resume.ai_score}")
-            existing_resume.parsing_status = 'completed'
-            
-        except Exception as e:
-            print(f"tazlyx debug: Resume re-parsing error: {str(e)}")
-            existing_resume.parsing_status = 'failed'
-            existing_resume.parsed_data = str(e)
-        
-        return existing_resume
+            return existing_resume
     
+    # 测试模式或新文件: 创建新记录
     unique_filename = f"{uuid.uuid4()}.{ext}"
     file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
     
@@ -103,8 +115,7 @@ def save_and_parse_resume(file, user_id):
     file_size = file.tell()
     file.seek(0)
     
-    unique_code = generate_unique_code()
-    
+    # 创建新简历记录
     resume = Resume(
         user_id=user_id,
         file_name=original_filename,
@@ -112,7 +123,6 @@ def save_and_parse_resume(file, user_id):
         file_type=ext,
         file_size=file_size,
         file_hash=file_hash,
-        unique_code=unique_code,
         parsing_status='processing'
     )
     
@@ -169,7 +179,7 @@ def save_and_parse_resume(file, user_id):
 @jwt_required()
 def get_resumes():
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
+    per_page = request.args.get('per_page', 12, type=int)
     user_id = request.args.get('user_id', type=int)
     parsing_status = request.args.get('parsing_status')
     
@@ -216,6 +226,44 @@ def get_resume(resume_id):
     return jsonify({'resume': resume.to_dict()})
 
 
+@bp.route('/<int:resume_id>', methods=['PUT'])
+@jwt_required()
+def update_resume(resume_id):
+    current_user_id = int(get_jwt_identity())
+    resume = Resume.query.get(resume_id)
+    
+    if not resume:
+        return jsonify({'error': 'Resume not found'}), 404
+    
+    if resume.user_id != current_user_id:
+        return jsonify({'error': 'Permission denied'}), 403
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    
+    if 'ai_contact' in data:
+        resume.ai_contact = data['ai_contact']
+    if 'ai_summary' in data:
+        resume.ai_summary = data['ai_summary']
+    if 'ai_skills' in data:
+        resume.ai_skills = data['ai_skills']
+    if 'ai_experience' in data:
+        resume.ai_experience = data['ai_experience']
+    if 'ai_education' in data:
+        resume.ai_education = data['ai_education']
+    if 'ai_projects' in data:
+        resume.ai_projects = data['ai_projects']
+    if 'ai_score' in data:
+        resume.ai_score = data['ai_score']
+    if 'ai_feedback' in data:
+        resume.ai_feedback = data['ai_feedback']
+    
+    db.session.commit()
+    
+    return jsonify({'resume': resume.to_dict(), 'message': 'Resume updated successfully'})
+
+
 @bp.route('', methods=['POST'])
 @jwt_required()
 def upload_resume():
@@ -226,8 +274,8 @@ def upload_resume():
     if not files or (len(files) == 1 and files[0].filename == ''):
         return jsonify({'error': 'No file provided'}), 400
     
-    if len(files) > 10:
-        return jsonify({'error': 'Maximum 10 files allowed at once'}), 400
+    if len(files) > 5:
+        return jsonify({'error': 'Maximum 5 files allowed at once'}), 400
     
     valid_files = [f for f in files if f.filename and allowed_file(f.filename)]
     

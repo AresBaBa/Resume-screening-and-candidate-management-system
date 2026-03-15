@@ -11,7 +11,8 @@ import {
   Moon,
   Sun,
   Menu,
-  X,
+  PanelLeftClose,
+  PanelLeft,
   LogOut,
   User,
   Upload,
@@ -91,7 +92,7 @@ export default function Sidebar() {
             onClick={handleToggleCollapse}
             className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
           >
-            {isCollapsed ? <Menu size={20} /> : <X size={20} />}
+            {isCollapsed ? <PanelLeft size={20} /> : <PanelLeftClose size={20} />}
           </button>
         </div>
 

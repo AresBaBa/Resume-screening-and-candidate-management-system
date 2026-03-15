@@ -6,6 +6,7 @@ import { Plus, Briefcase, MapPin, Users, Search, Filter, Trash2, Edit2, Zap, X }
 import Header from '@/components/Header';
 import { SkeletonJobCard } from '@/components/Skeleton';
 import { useToast } from '@/components/Toast';
+import { Pagination } from '@/components/Pagination';
 import { jobApi } from '@/lib/api';
 import { Job } from '@/types';
 
@@ -33,6 +34,9 @@ export default function JobsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [matching, setMatching] = useState<number | null>(null);
   const [skipExistingMap, setSkipExistingMap] = useState<Record<number, boolean>>({});
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(12);
+  const [total, setTotal] = useState(0);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -47,31 +51,36 @@ export default function JobsPage() {
 
   useEffect(() => {
     fetchJobs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [page, perPage, statusFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter]);
 
   const fetchJobs = async () => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    
     setLoading(true);
     try {
-      const params: any = {};
+      const params: any = { page, per_page: perPage };
       if (statusFilter) params.status = statusFilter;
       const response = await jobApi.list(params);
       const data = response.data;
       if (Array.isArray(data)) {
         setJobs(data);
+        setTotal(data.length);
       } else if (data && Array.isArray(data.jobs)) {
         setJobs(data.jobs);
+        setTotal(data.total || data.jobs.length);
       } else if (data && Array.isArray(data.items)) {
         setJobs(data.items);
+        setTotal(data.total || data.items.length);
       } else {
         setJobs([]);
+        setTotal(0);
       }
     } catch (error) {
       console.error('获取岗位列表失败:', error);
       setJobs([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -178,23 +187,24 @@ export default function JobsPage() {
         }
       />
 
-      <div className="p-6">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input
-              type="text"
-              placeholder="搜索岗位..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="input pl-10"
-            />
-          </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="input w-40"
-          >
+      <div className="p-6 flex flex-col min-h-[calc(100vh-64px)]">
+        <div className="flex-1">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="text"
+                placeholder="搜索岗位..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="input pl-10"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="input w-40"
+            >
             <option value="">全部状态</option>
             <option value="open">招聘中</option>
             <option value="closed">已关闭</option>
@@ -474,6 +484,21 @@ export default function JobsPage() {
           </div>
         </div>
       )}
+
+      {!loading && total > 0 && (
+        <Pagination
+          current={page}
+          pageSize={perPage}
+          total={total}
+          onChange={setPage}
+          onPageSizeChange={(size) => {
+            setPerPage(size);
+            setPage(1);
+          }}
+          pageSizeOptions={[12, 24, 48]}
+        />
+      )}
+      </div>
     </div>
   );
 }

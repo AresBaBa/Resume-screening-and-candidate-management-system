@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, Search, Filter, Users, ChevronDown, ChevronUp, Star, MapPin, Mail, Phone, Eye, X, Check, XCircle, GitCompare } from 'lucide-react';
 import Header from '@/components/Header';
 import { Skeleton } from '@/components/Skeleton';
+import { Pagination } from '@/components/Pagination';
 import { jobApi, candidateApi } from '@/lib/api';
 import { JobApplication, Job } from '@/types';
 
@@ -33,6 +34,7 @@ export default function CandidatesPage() {
   const [selectedCandidates, setSelectedCandidates] = useState<number[]>([]);
   const [showCompare, setShowCompare] = useState(false);
   const [filters, setFilters] = useState({
+    search: '',
     city: '',
     status: '',
     minScore: '',
@@ -43,6 +45,9 @@ export default function CandidatesPage() {
   });
 
   const [initialized, setInitialized] = useState(false);
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(20);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     const loadData = async () => {
@@ -77,15 +82,12 @@ export default function CandidatesPage() {
       fetchCandidates();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedJob, filters, initialized]);
+  }, [selectedJob, filters, initialized, page, perPage]);
 
   const fetchCandidates = async () => {
-    if (candidatesFetchedRef.current) return;
-    candidatesFetchedRef.current = true;
-    
     setLoading(true);
     try {
-      const params: any = {};
+      const params: any = { page, per_page: perPage };
       if (selectedJob) params.job_id = selectedJob;
       if (filters.minScore) params.min_score = Number(filters.minScore);
       if (filters.maxScore) params.max_score = Number(filters.maxScore);
@@ -99,16 +101,21 @@ export default function CandidatesPage() {
       const data = response.data;
       if (Array.isArray(data)) {
         setCandidates(data);
+        setTotal(data.length);
       } else if (data && Array.isArray(data.candidates)) {
         setCandidates(data.candidates);
+        setTotal(data.total || data.candidates.length);
       } else if (data && Array.isArray(data.items)) {
         setCandidates(data.items);
+        setTotal(data.total || data.items.length);
       } else {
         setCandidates([]);
+        setTotal(0);
       }
     } catch (error) {
       console.error('获取候选人列表失败:', error);
       setCandidates([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -184,23 +191,24 @@ export default function CandidatesPage() {
         }
       />
 
-      <div className="p-6">
-        <div className="flex items-center gap-4 mb-6">
-          <select
-            value={selectedJob || ''}
-            onChange={(e) => setSelectedJob(Number(e.target.value) || null)}
-            className="input w-64"
-          >
-            <option value="">选择岗位</option>
-            {jobs.map((job) => (
-              <option key={job.id} value={job.id}>
-                {job.title}
-              </option>
-            ))}
-          </select>
+      <div className="p-6 flex flex-col min-h-[calc(100vh-64px)]">
+        <div className="flex-1">
+          <div className="flex items-center gap-4 mb-6">
+            <select
+              value={selectedJob || ''}
+              onChange={(e) => setSelectedJob(Number(e.target.value) || null)}
+              className="input w-64"
+            >
+              <option value="">选择岗位</option>
+              {jobs.map((job) => (
+                <option key={job.id} value={job.id}>
+                  {job.title}
+                </option>
+              ))}
+            </select>
 
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
               placeholder="搜索候选人..."
@@ -730,6 +738,21 @@ export default function CandidatesPage() {
           </div>
         </div>
       )}
+
+      {!loading && total > 0 && (
+        <Pagination
+          current={page}
+          pageSize={perPage}
+          total={total}
+          onChange={setPage}
+          onPageSizeChange={(size) => {
+            setPerPage(size);
+            setPage(1);
+          }}
+          pageSizeOptions={[20, 40, 60]}
+        />
+      )}
+      </div>
     </div>
   );
 }

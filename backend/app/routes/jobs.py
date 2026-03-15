@@ -11,7 +11,7 @@ bp = Blueprint('jobs', __name__, url_prefix='/api/jobs')
 @bp.route('', methods=['GET'])
 def get_jobs():
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
+    per_page = request.args.get('per_page', 12, type=int)
     status = request.args.get('status', 'open')
     location = request.args.get('location')
     employment_type = request.args.get('employment_type')

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Upload, FileText, Trash2, Eye, Download, RefreshCw, Search, Filter, CheckCircle, XCircle, Clock, ArrowLeft } from 'lucide-react';
 import Header from '@/components/Header';
 import { SkeletonResumeCard } from '@/components/Skeleton';
+import { Pagination } from '@/components/Pagination';
 import { resumeApi } from '@/lib/api';
 import { Resume } from '@/types';
 
@@ -22,29 +23,35 @@ export default function ResumesPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(12);
+  const [total, setTotal] = useState(0);
+  const [paginationKey, setPaginationKey] = useState(0);
 
   const fetchResumes = async () => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    
     setLoading(true);
     try {
-      const params: any = {};
+      const params: any = { page, per_page: perPage };
       if (statusFilter) params.parsing_status = statusFilter;
       const response = await resumeApi.list(params);
       const data = response.data;
       if (Array.isArray(data)) {
         setResumes(data);
+        setTotal(data.length);
       } else if (data && Array.isArray(data.resumes)) {
         setResumes(data.resumes);
+        setTotal(data.total || data.resumes.length);
       } else if (data && Array.isArray(data.items)) {
         setResumes(data.items);
+        setTotal(data.total || data.items.length);
       } else {
         setResumes([]);
+        setTotal(0);
       }
     } catch (error) {
       console.error('获取简历列表失败:', error);
       setResumes([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -52,7 +59,11 @@ export default function ResumesPage() {
 
   useEffect(() => {
     fetchResumes();
-  }, []);
+  }, [page, perPage, statusFilter, paginationKey]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter]);
 
   const handleDelete = async (id: number) => {
     if (!confirm('确定要删除这份简历吗？')) return;
@@ -101,56 +112,57 @@ export default function ResumesPage() {
         }
       />
 
-      <div className="p-6">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input
-              type="text"
-              placeholder="搜索简历文件名..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="input pl-10"
-            />
-          </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="input w-40"
-          >
-            <option value="">全部状态</option>
-            <option value="pending">待处理</option>
-            <option value="processing">解析中</option>
-            <option value="completed">已完成</option>
-            <option value="failed">解析失败</option>
-          </select>
-        </div>
-
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[...Array(6)].map((_, i) => (
-              <SkeletonResumeCard key={i} />
-            ))}
-          </div>
-        ) : filteredResumes.length === 0 ? (
-          <div className="text-center py-12">
-            <FileText className="mx-auto h-16 w-16 text-gray-300 dark:text-slate-600 mb-4" />
-            <p className="text-lg text-gray-500 dark:text-gray-400">暂无简历</p>
-            <button
-              onClick={() => router.push('/')}
-              className="mt-4 btn btn-primary flex items-center gap-2 mx-auto"
+      <div className="p-6 flex flex-col min-h-[calc(100vh-64px)]">
+        <div className="flex-1">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="text"
+                placeholder="搜索简历文件名..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="input pl-10"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="input w-40"
             >
-              <Upload size={18} />
-              上传简历
-            </button>
+              <option value="">全部状态</option>
+              <option value="pending">待处理</option>
+              <option value="processing">解析中</option>
+              <option value="completed">已完成</option>
+              <option value="failed">解析失败</option>
+            </select>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredResumes.map((resume) => {
-              const status = statusConfig[resume.parsing_status] || statusConfig.pending;
-              const StatusIcon = status.icon;
 
-              return (
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <SkeletonResumeCard key={i} />
+              ))}
+            </div>
+          ) : filteredResumes.length === 0 ? (
+            <div className="text-center py-12">
+              <FileText className="mx-auto h-16 w-16 text-gray-300 dark:text-slate-600 mb-4" />
+              <p className="text-lg text-gray-500 dark:text-gray-400">暂无简历</p>
+              <button
+                onClick={() => router.push('/')}
+                className="mt-4 btn btn-primary flex items-center gap-2 mx-auto"
+              >
+                <Upload size={18} />
+                上传简历
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredResumes.map((resume) => {
+                const status = statusConfig[resume.parsing_status] || statusConfig.pending;
+                const StatusIcon = status.icon;
+
+                return (
                 <div
                   key={resume.id}
                   className="card p-4 hover:shadow-md transition-shadow"
@@ -169,7 +181,7 @@ export default function ResumesPage() {
                         {resume.ai_education?.[0]?.major && ` • ${resume.ai_education[0].major}`}
                       </p>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        {formatFileSize(resume.file_size)} • {resume.created_at?.split('T')[0]}
+                        {formatFileSize(resume.file_size)} • {resume.created_at?.replace('T', ' ').substring(0, 19)}
                       </p>
                       <div className={`inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full text-xs font-medium ${status.color}`}>
                         <StatusIcon size={12} />
@@ -205,6 +217,21 @@ export default function ResumesPage() {
               );
             })}
           </div>
+        )}
+        </div>
+
+        {!loading && total > 0 && (
+          <Pagination
+            current={page}
+            pageSize={perPage}
+            total={total}
+            onChange={setPage}
+            onPageSizeChange={(size) => {
+              setPerPage(size);
+              setPage(1);
+            }}
+            pageSizeOptions={[12, 24, 48]}
+          />
         )}
       </div>
     </div>
