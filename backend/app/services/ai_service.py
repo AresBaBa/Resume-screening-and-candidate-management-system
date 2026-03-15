@@ -203,3 +203,111 @@ def parse_resume_with_ai_v2(raw_text: str) -> Dict[str, Any]:
             'structured': {},
             'error': str(e)
         }
+
+
+def match_resume_to_job(resume_data: Dict[str, Any], job_data: Dict[str, Any]) -> Dict[str, Any]:
+    """使用 AI 分析简历与岗位的匹配度
+    
+    Args:
+        resume_data: 简历结构化数据
+        job_data: 岗位数据
+    
+    Returns:
+        匹配评分结果，包含综合评分、各维度评分和AI评语
+    """
+    print(f"tazlyx debug: Starting job-resume matching analysis")
+    
+    try:
+        provider = AIServiceFactory.get_current_provider()
+        print(f"tazlyx debug: Using AI provider: {provider}")
+        
+        service = AIServiceFactory.get_service(provider)
+        
+        resume_skills = resume_data.get('skills', [])
+        resume_experience = resume_data.get('experience', [])
+        resume_education = resume_data.get('education', [])
+        resume_summary = resume_data.get('summary', '')
+        resume_city = resume_data.get('city', '')
+        
+        job_title = job_data.get('title', '')
+        job_description = job_data.get('description', '')
+        job_skills_required = job_data.get('skills_required', [])
+        job_skills_preferred = job_data.get('skills_preferred', [])
+        job_requirements = job_data.get('requirements', {})
+        
+        prompt = f"""你是一个专业的HR招聘助手，擅长评估候选人与岗位的匹配度。请根据以下信息进行评估并返回JSON格式结果。
+
+## 岗位信息
+- 岗位名称: {job_title}
+- 岗位描述: {job_description[:2000]}
+- 必备技能: {json.dumps(job_skills_required, ensure_ascii=False) if job_skills_required else '无'}
+- 加分技能: {json.dumps(job_skills_preferred, ensure_ascii=False) if job_skills_preferred else '无'}
+- 其他要求: {json.dumps(job_requirements, ensure_ascii=False) if job_requirements else '无'}
+
+## 简历信息
+- 个人简介: {resume_summary[:500]}
+- 技能列表: {json.dumps(resume_skills, ensure_ascii=False) if resume_skills else '无'}
+- 工作经验: {json.dumps(resume_experience[:3], ensure_ascii=False) if resume_experience else '无'}
+- 教育背景: {json.dumps(resume_education[:2], ensure_ascii=False) if resume_education else '无'}
+- 所在城市: {resume_city}
+
+请评估以上简历与岗位的匹配程度，返回以下JSON格式（只返回JSON，不要有任何其他内容）:
+{{
+    "matching_score": 综合匹配度评分(0-100整数),
+    "skill_score": 技能匹配度评分(0-100整数),
+    "experience_score": 经验相关性评分(0-100整数),
+    "education_score": 教育背景契合度评分(0-100整数),
+    "ai_comment": "一段文字说明该候选人的优势与不足（100-200字）",
+    "matching_data": {{
+        "matched_skills": ["匹配的技能列表"],
+        "missing_skills": ["缺失的必备技能"],
+        "preferred_skills": ["已具备的加分技能"],
+        "experience_match": "经验匹配说明",
+        "education_match": "学历匹配说明"
+    }}
+}}
+
+注意：
+1. matching_score是综合评分，应该结合技能、经验、教育三个维度综合考虑
+2. 如果简历缺少必备技能，matching_score应该相应降低
+3. 如果简历具备加分技能，matching_score应该适当提升
+4. 只返回JSON，不要添加任何解释或markdown标记"""
+
+        messages = [
+            {"role": "system", "content": "你是一个专业的HR招聘助手，擅长评估候选人与岗位的匹配度。请根据简历和岗位信息进行客观评估。"},
+            {"role": "user", "content": prompt}
+        ]
+
+        print(f"tazlyx debug: Calling AI matching API...")
+        content = service.chat(messages)
+
+        print(f"tazlyx debug: AI matching response: {content[:200]}...")
+
+        json_match = re.search(r'\{[\s\S]*\}', content)
+        if json_match:
+            result = json.loads(json_match.group())
+            print(f"tazlyx debug: Parsed matching result: skill_score={result.get('skill_score')}, experience_score={result.get('experience_score')}, education_score={result.get('education_score')}, matching_score={result.get('matching_score')}")
+            return result
+        else:
+            print("tazlyx debug: No JSON found in AI matching response")
+            return {
+                'matching_score': 0,
+                'skill_score': 0,
+                'experience_score': 0,
+                'education_score': 0,
+                'ai_comment': 'AI评分失败',
+                'matching_data': {}
+            }
+
+    except Exception as e:
+        print(f"tazlyx debug: AI matching error: {str(e)}")
+        import traceback
+        print(f"tazlyx debug: Traceback: {traceback.format_exc()}")
+        return {
+            'matching_score': 0,
+            'skill_score': 0,
+            'experience_score': 0,
+            'education_score': 0,
+            'ai_comment': f'评分出错: {str(e)}',
+            'matching_data': {}
+        }
