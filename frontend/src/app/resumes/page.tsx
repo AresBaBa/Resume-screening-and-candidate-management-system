@@ -238,7 +238,9 @@ export default function ResumesPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-gray-900 dark:text-white truncate">
-                        {resume.file_name}
+                        {resume.ai_contact?.name || resume.file_name.split('.')[0] || '未知姓名'}
+                        {resume.ai_education?.[0]?.degree && ` - ${resume.ai_education[0].degree}`}
+                        {resume.ai_intended_position && ` - ${resume.ai_intended_position}`}
                       </h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                         {formatFileSize(resume.file_size)} • {resume.created_at?.split('T')[0]}

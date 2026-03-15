@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, FileText, User, Mail, Phone, MapPin, Briefcase, GraduationCap, Code, Project, Save, Edit2, X, Check } from 'lucide-react';
+import { ArrowLeft, FileText, User, Mail, Phone, MapPin, Briefcase, GraduationCap, Code, Folder, Save, Edit2, X, Check, Download } from 'lucide-react';
 import Header from '@/components/Header';
 import { Skeleton } from '@/components/Skeleton';
 import { resumeApi } from '@/lib/api';
+import { useUserStore } from '@/stores/userStore';
 import { Resume, Contact, Experience, Education, Project as ProjectType } from '@/types';
+import axios from 'axios';
 
 interface EditableFieldProps {
   label: string;
@@ -71,16 +73,22 @@ export default function ResumeDetailPage() {
   const router = useRouter();
   const params = useParams();
   const resumeId = Number(params.id);
+  const fetchedRef = useRef(false);
+  const pdfUrlRef = useRef<string | null>(null);
 
   const [resume, setResume] = useState<Resume | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'info' | 'ai' | 'raw'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'ai' | 'raw' | 'pdf'>('info');
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   useEffect(() => {
     const fetchResume = async () => {
+      if (fetchedRef.current) return;
+      fetchedRef.current = true;
+      
       try {
         const response = await resumeApi.get(resumeId);
-        setResume(response.data);
+        setResume(response.data.resume || response.data);
       } catch (error) {
         console.error('获取简历详情失败:', error);
       } finally {
@@ -94,7 +102,68 @@ export default function ResumeDetailPage() {
   }, [resumeId]);
 
   const handleSaveField = async (field: string, value: string) => {
-    console.log('保存字段:', field, value);
+    if (!resume) return;
+    
+    try {
+      const updateData: any = {};
+      if (field === 'name' || field === 'email' || field === 'phone' || field === 'city') {
+        updateData.ai_contact = { ...resume.ai_contact, [field]: value };
+      } else if (field.startsWith('exp_')) {
+        const expField = field.replace('exp_', '');
+        const expIndex = parseInt(field.split('_')[1] || '0');
+        const newExp = [...(resume.ai_experience || [])];
+        if (newExp[expIndex]) {
+          newExp[expIndex] = { ...newExp[expIndex], [expField]: value };
+        }
+        updateData.ai_experience = newExp;
+      } else if (field.startsWith('edu_')) {
+        const eduField = field.replace('edu_', '');
+        const newEdu = [...(resume.ai_education || [])];
+        newEdu[0] = { ...newEdu[0], [eduField]: value };
+        updateData.ai_education = newEdu;
+      }
+      
+      await resumeApi.update(resumeId, updateData);
+      setResume({ ...resume, ...updateData });
+    } catch (error) {
+      console.error('保存失败:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'pdf' && !pdfUrlRef.current) {
+      const loadPdf = async () => {
+        setPdfLoading(true);
+        try {
+          const token = useUserStore.getState().token;
+          const response = await axios.get(
+            `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/resumes/${resumeId}/download`,
+            {
+              responseType: 'blob',
+              headers: token ? { Authorization: `Bearer ${token}` } : {},
+            }
+          );
+          const url = URL.createObjectURL(response.data);
+          pdfUrlRef.current = url;
+        } catch (error) {
+          console.error('加载PDF失败:', error);
+        } finally {
+          setPdfLoading(false);
+        }
+      };
+      loadPdf();
+    }
+  }, [activeTab, resumeId]);
+
+  const handleDownload = () => {
+    if (pdfUrlRef.current) {
+      const link = document.createElement('a');
+      link.href = pdfUrlRef.current;
+      link.download = resume?.file_name || 'resume.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   if (loading) {
@@ -195,6 +264,16 @@ export default function ResumeDetailPage() {
                 >
                   原始数据
                 </button>
+                <button
+                  onClick={() => setActiveTab('pdf')}
+                  className={`px-4 py-2 -mb-px text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === 'pdf'
+                      ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                  }`}
+                >
+                  PDF预览
+                </button>
               </div>
 
               {activeTab === 'info' && (
@@ -264,7 +343,7 @@ export default function ResumeDetailPage() {
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                      <Project size={18} />
+                      <Folder size={18} />
                       项目经验
                     </h3>
                     {resume.ai_projects && resume.ai_projects.length > 0 ? (
@@ -358,9 +437,30 @@ export default function ResumeDetailPage() {
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                     原始解析数据
                   </h3>
-                  <pre className="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg overflow-x-auto text-sm text-gray-600 dark:text-gray-300">
+                  <pre className="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all">
                     {JSON.stringify(resume.parsed_data || resume.ai_structured || {}, null, 2)}
                   </pre>
+                </div>
+              )}
+
+              {activeTab === 'pdf' && (
+                <div className="h-[600px] bg-gray-100 dark:bg-slate-800 rounded-lg overflow-hidden">
+                  {pdfLoading ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-gray-500">加载中...</div>
+                    </div>
+                  ) : pdfUrlRef.current ? (
+                    <embed
+                      src={pdfUrlRef.current}
+                      type="application/pdf"
+                      className="w-full h-full"
+                      title="PDF Preview"
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-gray-500">无法加载PDF</div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -409,10 +509,14 @@ export default function ResumeDetailPage() {
               </h3>
               <div className="space-y-2">
                 <button className="w-full btn btn-secondary flex items-center justify-center gap-2">
-                  <Project size={16} />
+                  <Folder size={16} />
                   重新解析
                 </button>
-                <button className="w-full btn btn-secondary flex items-center justify-center gap-2">
+                <button 
+                  onClick={handleDownload}
+                  className="w-full btn btn-secondary flex items-center justify-center gap-2"
+                >
+                  <Download size={16} />
                   下载简历
                 </button>
               </div>
