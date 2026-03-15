@@ -158,6 +158,9 @@ def parse_resume_with_ai_v2(raw_text: str) -> Dict[str, Any]:
     ],
     "education": [
         {{"degree": "学历", "school": "学校", "major": "专业", "dates": "时间"}}
+    ],
+    "projects": [
+        {{"name": "项目名称", "role": "个人职责", "tech": "技术栈", "description": "项目描述"}}
     ]
 }}
 

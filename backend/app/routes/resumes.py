@@ -54,6 +54,7 @@ def save_and_parse_resume(file, user_id):
         resume.ai_skills = structured.get('skills', [])
         resume.ai_experience = structured.get('experience', [])
         resume.ai_education = structured.get('education', [])
+        resume.ai_projects = structured.get('projects', [])
         
         contact = {
             'email': structured.get('email'),
@@ -61,6 +62,7 @@ def save_and_parse_resume(file, user_id):
             'name': structured.get('name')
         }
         resume.ai_contact = contact
+        resume.ai_structured = structured
         
         print(f"tazlyx debug: Resume parsed - name: {contact.get('name')}, skills: {resume.ai_skills}")
         resume.parsing_status = 'completed'

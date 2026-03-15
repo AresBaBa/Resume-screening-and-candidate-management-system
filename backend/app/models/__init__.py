@@ -52,7 +52,9 @@ class Resume(db.Model):
     ai_skills = db.Column(db.JSON, comment='AI提取的技能列表')
     ai_experience = db.Column(db.JSON, comment='AI提取的工作经验')
     ai_education = db.Column(db.JSON, comment='AI提取的教育背景')
+    ai_projects = db.Column(db.JSON, comment='AI提取的项目经历')
     ai_contact = db.Column(db.JSON, comment='AI提取的联系方式')
+    ai_structured = db.Column(db.JSON, comment='AI提取的完整结构化数据')
     ai_score = db.Column(db.Float, comment='AI评分(0-100)')
     ai_feedback = db.Column(db.Text, comment='AI反馈')
     created_at = db.Column(db.DateTime, default=datetime.utcnow, comment='创建时间')
@@ -73,7 +75,9 @@ class Resume(db.Model):
             'ai_skills': self.ai_skills,
             'ai_experience': self.ai_experience,
             'ai_education': self.ai_education,
+            'ai_projects': self.ai_projects,
             'ai_contact': self.ai_contact,
+            'ai_structured': self.ai_structured,
             'ai_score': self.ai_score,
             'ai_feedback': self.ai_feedback,
             'created_at': self.created_at.isoformat() if self.created_at else None,
