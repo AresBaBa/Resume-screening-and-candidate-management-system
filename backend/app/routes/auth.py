@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
 from app import db
-from app.models import User, Candidate, Admin
+from app.models import User
 
 bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
@@ -16,20 +16,15 @@ def register():
     user = User(
         email=data['email'],
         name=data['name'],
-        role=data.get('role', 'candidate')
+        phone=data.get('phone')
     )
     user.set_password(data['password'])
     
     db.session.add(user)
     db.session.commit()
     
-    if user.role == 'candidate':
-        candidate = Candidate(user_id=user.id)
-        db.session.add(candidate)
-        db.session.commit()
-    
-    access_token = create_access_token(identity=user.id)
-    refresh_token = create_refresh_token(identity=user.id)
+    access_token = create_access_token(identity=str(user.id))
+    refresh_token = create_refresh_token(identity=str(user.id))
     
     return jsonify({
         'message': 'User registered successfully',
@@ -48,8 +43,8 @@ def login():
     if not user or not user.check_password(data['password']):
         return jsonify({'error': 'Invalid email or password'}), 401
     
-    access_token = create_access_token(identity=user.id)
-    refresh_token = create_refresh_token(identity=user.id)
+    access_token = create_access_token(identity=str(user.id))
+    refresh_token = create_refresh_token(identity=str(user.id))
     
     return jsonify({
         'message': 'Login successful',
@@ -62,8 +57,8 @@ def login():
 @bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
-    current_user_id = get_jwt_identity()
-    access_token = create_access_token(identity=current_user_id)
+    current_user_id = int(get_jwt_identity())
+    access_token = create_access_token(identity=str(current_user_id))
     
     return jsonify({'access_token': access_token})
 
@@ -71,11 +66,34 @@ def refresh():
 @bp.route('/me', methods=['GET'])
 @jwt_required()
 def get_current_user():
-    current_user_id = get_jwt_identity()
+    current_user_id = int(get_jwt_identity())
     user = User.query.get(current_user_id)
     
     if not user:
         return jsonify({'error': 'User not found'}), 404
+    
+    return jsonify({'user': user.to_dict()})
+
+
+@bp.route('/me', methods=['PUT'])
+@jwt_required()
+def update_current_user():
+    current_user_id = int(get_jwt_identity())
+    user = User.query.get(current_user_id)
+    
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    data = request.get_json()
+    
+    if 'name' in data:
+        user.name = data['name']
+    if 'phone' in data:
+        user.phone = data['phone']
+    if 'avatar_url' in data:
+        user.avatar_url = data['avatar_url']
+    
+    db.session.commit()
     
     return jsonify({'user': user.to_dict()})
 

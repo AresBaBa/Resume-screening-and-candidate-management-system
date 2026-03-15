@@ -156,3 +156,7 @@ dist/
 # Logs
 logs
 *.log
+
+# other
+temp/
+tmp/
