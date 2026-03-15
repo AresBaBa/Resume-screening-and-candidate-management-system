@@ -15,7 +15,20 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
 
+    AI_PROVIDER = os.environ.get('AI_PROVIDER', 'deepseek')
+
     OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+    OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
+
+    DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY', '')
+    DEEPSEEK_URL = os.environ.get('DEEPSEEK_API_BASE', 'https://api.deepseek.com/chat/completions')
+    DEEPSEEK_MODEL = os.environ.get('DEEPSEEK_MODEL', 'deepseek-chat')
+
+    ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
+    ANTHROPIC_MODEL = os.environ.get('ANTHROPIC_MODEL', 'claude-3-haiku-20240307')
+
+    XAI_API_KEY = os.environ.get('XAI_API_KEY', '')
+    XAI_MODEL = os.environ.get('XAI_MODEL', 'grok-2-1212')
 
     CACHE_TYPE = 'redis'
     CACHE_REDIS_URL = os.environ.get('REDIS_URL') or 'redis://localhost:6379/1'

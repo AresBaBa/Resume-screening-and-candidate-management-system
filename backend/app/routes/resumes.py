@@ -5,7 +5,7 @@ import os
 import uuid
 from app import db
 from app.models import Resume, User
-from app.services.resume_parser import parse_resume, get_resume_thumbnail
+from app.services.resume_parser import parse_resume, parse_resume_with_ai, get_resume_thumbnail
 
 bp = Blueprint('resumes', __name__, url_prefix='/api/resumes')
 
@@ -44,7 +44,9 @@ def save_and_parse_resume(file, user_id):
     db.session.flush()
     
     try:
-        parsed_data = parse_resume(file_path)
+        print(f"tazlyx debug: Parsing resume: {filename}")
+        parsed_data = parse_resume_with_ai(file_path)
+        print(f"tazlyx debug: Parsing result keys: {list(parsed_data.keys())}")
         
         resume.parsed_data = parsed_data.get('raw_text', '')
         structured = parsed_data.get('structured', {})
@@ -60,9 +62,11 @@ def save_and_parse_resume(file, user_id):
         }
         resume.ai_contact = contact
         
+        print(f"tazlyx debug: Resume parsed - name: {contact.get('name')}, skills: {resume.ai_skills}")
         resume.parsing_status = 'completed'
         
     except Exception as e:
+        print(f"tazlyx debug: Resume parsing error: {str(e)}")
         resume.parsing_status = 'failed'
         resume.parsed_data = str(e)
     

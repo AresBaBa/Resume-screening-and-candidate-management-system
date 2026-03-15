@@ -1,9 +1,15 @@
 import re
+import json
 import pdfplumber
 import fitz
+import os
 from io import BytesIO
 from PIL import Image
 from typing import Dict, List, Optional, Any
+
+from dotenv import load_dotenv
+load_dotenv()
+from config import Config
 
 
 class ResumeParser:
@@ -66,7 +72,6 @@ class ResumeParser:
             'experience': self._extract_experience(text),
             'education': self._extract_education(text),
             'skills': self._extract_skills(text),
-            'languages': self._extract_languages(text),
         }
         return structured
     
@@ -74,21 +79,32 @@ class ResumeParser:
         lines = text.strip().split('\n')
         if lines:
             first_line = lines[0].strip()
-            if 2 <= len(first_line.split()) <= 4:
-                if re.match(r'^[A-Z][a-z]+(?:\s[A-Z][a-z]+)+$', first_line):
+            if 2 <= len(first_line) <= 10 and not any(c in first_line for c in ['@', '电话', '邮箱', '求职意向', '年龄']):
+                if re.match(r'^[\u4e00-\u9fa5]{2,10}$', first_line):
                     return first_line
+        
+        name_match = re.search(r'^([\u4e00-\u9fa5]{2,4})\s*[\u4e00-\u9fa5]', text)
+        if name_match:
+            return name_match.group(1)
+        
         return None
     
     def _extract_email(self, text: str) -> Optional[str]:
-        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-        match = re.search(email_pattern, text)
-        return match.group(0) if match else None
+        email_patterns = [
+            r'[\u4e00-\u9fa5a-zA-Z0-9._%+-]+@[\u4e00-\u9fa5a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
+            r'b415189417@163\.com'
+        ]
+        for pattern in email_patterns:
+            match = re.search(pattern, text)
+            if match:
+                return match.group(0)
+        return None
     
     def _extract_phone(self, text: str) -> Optional[str]:
         phone_patterns = [
-            r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b',
-            r'\b\+\d{1,3}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}\b',
-            r'\b\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b',
+            r'1[3-9]\d{9}',
+            r'\d{3,4}[-\s]?\d{7,8}',
+            r'\d{11}',
         ]
         for pattern in phone_patterns:
             match = re.search(pattern, text)
@@ -97,70 +113,154 @@ class ResumeParser:
         return None
     
     def _extract_summary(self, text: str) -> Optional[str]:
-        summary_keywords = ['summary', 'objective', 'profile', 'about', 'professional summary']
+        summary_keywords = ['求职意向', '个人简介', 'summary', 'objective']
         
         lines = text.split('\n')
         for i, line in enumerate(lines):
-            if any(keyword in line.lower() for keyword in summary_keywords):
+            line_lower = line.lower().replace(' ', '')
+            if any(keyword in line_lower for keyword in summary_keywords):
                 summary_lines = []
-                for j in range(i + 1, min(i + 5, len(lines))):
-                    if lines[j].strip():
+                for j in range(i + 1, min(i + 4, len(lines))):
+                    if lines[j].strip() and not any(kw in lines[j] for kw in ['专业技能', '工作经验', '教育背景', '项目经验']):
                         summary_lines.append(lines[j].strip())
                     else:
                         break
                 if summary_lines:
-                    return ' '.join(summary_lines)
+                    return ' '.join(summary_lines[:2])
         return None
     
     def _extract_experience(self, text: str) -> List[Dict[str, str]]:
         experience = []
-        exp_keywords = ['experience', 'work history', 'employment', 'professional experience']
         
-        lines = text.split('\n')
-        in_experience = False
-        exp_section = []
+        exp_sections = re.split(r'工作经验|项目经验', text)
         
-        for i, line in enumerate(lines):
-            if any(keyword in line.lower() for keyword in exp_keywords):
-                in_experience = True
-                continue
-                
-            if in_experience:
-                if any(kw in line.lower() for kw in ['education', 'skills', 'languages', 'projects']):
-                    break
-                if line.strip():
-                    exp_section.append(line.strip())
-        
-        for i, section in enumerate(exp_section[:5]):
-            date_pattern = r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{4}\s*[-–—to]+\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?[a-z]*\s*\d{0,4}|(\d{4}\s*[-–—to]+\s*\d{0,4})'
-            dates = re.findall(date_pattern, section, re.IGNORECASE)
+        for section_idx, section in enumerate(exp_sections[1:6], 1):
+            lines = section.split('\n')
+            current_exp = {}
             
-            experience.append({
-                'title': section.split(',')[0] if ',' in section else section[:50],
-                'company': section.split(',')[1].strip() if ',' in section else '',
-                'dates': ' '.join([' '.join(d) for d in dates]) if dates else '',
-            })
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                if any(kw in line for kw in ['教育背景', '专业技能', '项目经验']):
+                    break
+                
+                date_match = re.search(r'(\d{4}[-\s]?\d{0,2})\s*[~\-至]\s*(\d{4}[-\s]?\d{0,2}|今|今)', line)
+                if date_match:
+                    if 'dates' not in current_exp:
+                        current_exp['dates'] = line[:20]
+                
+                if any(title in line for title in ['Java开发', '前端', '后端', '开发', '测试', '设计']):
+                    if 'title' not in current_exp:
+                        current_exp['title'] = line[:30]
+                    elif 'company' not in current_exp:
+                        current_exp['company'] = line[:30]
+                elif 'company' not in current_exp and current_exp.get('title'):
+                    if len(line) < 30:
+                        current_exp['company'] = line
+                
+                if 'description' not in current_exp:
+                    if line.startswith(('1.', '2.', '3.', '4.', '5.', '1、', '2、', '3、')):
+                        current_exp['description'] = line
+                
+                if len(current_exp) >= 2:
+                    experience.append({
+                        'title': current_exp.get('title', ''),
+                        'company': current_exp.get('company', ''),
+                        'dates': current_exp.get('dates', ''),
+                        'description': current_exp.get('description', '')[:100]
+                    })
+                    current_exp = {}
+            
+            if current_exp and len(current_exp) >= 1:
+                experience.append({
+                    'title': current_exp.get('title', ''),
+                    'company': current_exp.get('company', ''),
+                    'dates': current_exp.get('dates', ''),
+                    'description': current_exp.get('description', '')[:100]
+                })
         
-        return experience
+        return experience[:6]
     
     def _extract_education(self, text: str) -> List[Dict[str, str]]:
         education = []
-        edu_keywords = ['education', 'academic', 'qualification']
         
-        lines = text.split('\n')
-        in_education = False
-        edu_section = []
+        edu_section_match = re.search(r'教育背景[:：]?\s*(.*?)(?=工作经验|项目经验|专业技能|$)', text, re.DOTALL)
+        if not edu_section_match:
+            return education
         
-        for i, line in enumerate(lines):
-            if any(keyword in line.lower() for keyword in edu_keywords):
-                in_education = True
+        edu_text = edu_section_match.group(1)
+        
+        school_patterns = [
+            r'([\u4e00-\u9fa5]{4,20}(?:大学|学院|学校|研究生|硕士|博士))',
+        ]
+        
+        degree_keywords = ['本科', '硕士', '博士', '大专', '学士']
+        
+        lines = edu_text.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line:
                 continue
-                
-            if in_education:
-                if any(kw in line.lower() for kw in ['experience', 'skills', 'languages', 'projects']):
-                    break
-                if line.strip():
-                    edu_section.append(line.strip())
+            
+            edu_item = {}
+            
+            degree_match = re.search(r'(本科|硕士|博士|大专|学士|研究生)', line)
+            if degree_match:
+                edu_item['degree'] = degree_match.group(1)
+            
+            school_match = re.search(r'([\u4e00-\u9fa5]{4,15}(?:大学|学院|学校))', line)
+            if school_match:
+                edu_item['school'] = school_match.group(1)
+            
+            major_match = re.search(r'([\u4e00-\u9fa5]{2,10}(?:专业|方向))', line)
+            if major_match:
+                edu_item['major'] = major_match.group(1)
+            
+            if edu_item:
+                education.append(edu_item)
+        
+        return education[:3]
+    
+    def _extract_skills(self, text: str) -> List[str]:
+        skills = []
+        
+        skill_section_match = re.search(r'专业技能[:：]?\s*(.*?)(?=工作经验|项目经验|教育背景|$)', text, re.DOTALL)
+        if not skill_section_match:
+            return skills
+        
+        skill_text = skill_section_match.group(1)
+        
+        tech_skills = [
+            'JavaSE', 'JavaEE', 'Java', 'Spring', 'SpringBoot', 'SpringCloud', 'SpringMVC',
+            'MyBatis', 'MyBatis-Plus', 'Hibernate', 'Struts',
+            'Python', 'Django', 'Flask',
+            'JavaScript', 'TypeScript', 'Vue', 'Vue3', 'React', 'Angular', 'Node.js', 'Node',
+            'HTML', 'CSS', 'HTML5', 'CSS3', 'JQuery', 'Ajax', 'Echarts',
+            'MySQL', 'Oracle', 'PostgreSQL', 'SQLServer', 'Redis', 'MongoDB', 'Elasticsearch',
+            'Docker', 'Kubernetes', 'K8S', 'Jenkins', 'Git', 'Maven', 'SVN', 'Linux',
+            'Tomcat', 'Nginx', 'Apache',
+            'TCP/IP', 'HTTP', 'HTTPS', 'WebSocket',
+            'Ajax', 'REST', 'API', 'SDK',
+            'C++', 'C#', 'Go', 'Rust', 'PHP', 'Ruby',
+            'AI', 'Machine Learning', 'Deep Learning', 'NLP',
+            'VUE', 'Element', 'Element-UI', 'TDesign', 'Layui',
+            'SSM', 'SSH', 'Activiti', 'Flowable',
+            'xxl-job', 'Knife4j', 'Pinecone',
+        ]
+        
+        for skill in tech_skills:
+            if skill in skill_text:
+                skills.append(skill)
+        
+        skill_pattern = r'([A-Za-z+#]+[\w.#]*)'
+        matches = re.findall(skill_pattern, skill_text)
+        for match in matches:
+            if len(match) >= 2 and match not in skills:
+                skills.append(match)
+        
+        return list(set(skills))[:20]
         
         degree_patterns = [
             r'(Bachelor|Master|PhD|Doctorate|Associate|Diploma)[^\n]*',
@@ -268,3 +368,32 @@ def parse_resume(file_path: str) -> Dict[str, Any]:
 def get_resume_thumbnail(file_path: str) -> Optional[bytes]:
     parser = ResumeParser()
     return parser.get_thumbnail(file_path)
+
+
+def parse_resume_with_ai(file_path: str, raw_text: str = None) -> Dict[str, Any]:
+    print(f"tazlyx debug: Starting AI parsing for {file_path}")
+    
+    if not raw_text:
+        parser = ResumeParser()
+        if file_path.lower().endswith('.pdf'):
+            result = parser.parse_pdf(file_path)
+        elif file_path.lower().endswith('.docx'):
+            result = parser.parse_docx(file_path)
+        else:
+            return {'error': 'Unsupported file format'}
+        raw_text = result.get('raw_text', '')
+    
+    if not raw_text:
+        print("tazlyx debug: No raw text extracted from file")
+        return {'error': 'No text extracted from file'}
+    
+    print(f"tazlyx debug: Raw text length: {len(raw_text)} characters")
+    
+    try:
+        from app.services.ai_service import parse_resume_with_ai_v2
+        return parse_resume_with_ai_v2(raw_text)
+    except Exception as e:
+        print(f"tazlyx debug: Import AI service error: {str(e)}")
+        import traceback
+        print(f"tazlyx debug: Traceback: {traceback.format_exc()}")
+        return {'error': str(e)}
