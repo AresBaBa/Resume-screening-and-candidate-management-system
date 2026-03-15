@@ -7,7 +7,7 @@ import uuid
 import hashlib
 from app import db, socketio
 from app.models import Resume, User
-from app.services.resume_parser import parse_resume, parse_resume_with_ai, get_resume_thumbnail
+from app.services.resume_parser import parse_resume, parse_resume_with_ai, get_resume_thumbnail, parse_resume_with_ai_stream
 from app.routes.websocket import send_notification
 
 bp = Blueprint('resumes', __name__, url_prefix='/api/resumes')
@@ -443,3 +443,186 @@ def get_resume_thumbnail_route(resume_id):
             return jsonify({'error': 'Failed to generate thumbnail'}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/stream-upload', methods=['POST'])
+@jwt_required()
+def stream_upload_resume():
+    """流式上传并解析简历，通过SSE返回进度"""
+    from flask import Response, request
+    import json
+    
+    print(f"tazlyx debug: stream-upload called, method: {request.method}, files: {list(request.files.keys())}")
+    print(f"tazlyx debug: request.headers: {dict(request.headers)}")
+    
+    current_user_id = int(get_jwt_identity())
+    import queue
+    import threading
+    import io
+    
+    files = request.files.getlist('files')
+    
+    if not files or (len(files) == 1 and files[0].filename == ''):
+        return Response(f"data: {json.dumps({'error': 'No file provided'})}\n\n", mimetype='text/event-stream')
+    
+    if len(files) > 5:
+        return Response(f"data: {json.dumps({'error': 'Maximum 5 files allowed at once'})}\n\n", mimetype='text/event-stream')
+    
+    valid_files = [f for f in files if f.filename and allowed_file(f.filename)]
+    
+    if not valid_files:
+        return Response(f"data: {json.dumps({'error': 'No valid files provided. Only PDF and DOCX are allowed'})}\n\n", mimetype='text/event-stream')
+    
+    file_data_list = []
+    for f in valid_files:
+        content = f.read()
+        file_data_list.append({
+            'filename': f.filename,
+            'content': content,
+            'content_type': f.content_type
+        })
+    
+    progress_queues = {}
+    
+    def generate():
+        def run_parse(file_data, q, file_idx):
+            from app import create_app
+            app = create_app()
+            with app.app_context():
+                try:
+                    file_obj = io.BytesIO(file_data['content'])
+                    file_obj.filename = file_data['filename']
+                    resume = save_and_parse_resume_stream(file_obj, current_user_id, q)
+                    db.session.commit()
+                    resume_dict = resume.to_dict()
+                    q.put(('complete', resume_dict))
+                except Exception as e:
+                    print(f"tazlyx debug: run_parse error: {str(e)}")
+                    q.put(('error', str(e)))
+        
+        threads = []
+        for idx, file_data in enumerate(file_data_list):
+            q = queue.Queue()
+            progress_queues[idx] = q
+            t = threading.Thread(target=run_parse, args=(file_data, q, idx))
+            t.start()
+            threads.append(t)
+            yield f"data: {json.dumps({'type': 'start', 'file': file_data['filename'], 'index': idx})}\n\n"
+        
+        import time
+        while any(t.is_alive() for t in threads):
+            for idx, q in progress_queues.items():
+                while not q.empty():
+                    msg_type, data = q.get()
+                    if msg_type == 'progress':
+                        yield f"data: {json.dumps({'type': 'progress', 'file': file_data_list[idx]['filename'], 'message': data})}\n\n"
+                    elif msg_type == 'complete':
+                        yield f"data: {json.dumps({'type': 'complete', 'file': file_data_list[idx]['filename'], 'resume': data})}\n\n"
+                    elif msg_type == 'error':
+                        yield f"data: {json.dumps({'type': 'error', 'file': file_data_list[idx]['filename'], 'error': data})}\n\n"
+            time.sleep(0.1)
+        
+        for idx, q in progress_queues.items():
+            while not q.empty():
+                msg_type, data = q.get()
+                if msg_type == 'progress':
+                    yield f"data: {json.dumps({'type': 'progress', 'file': file_data_list[idx]['filename'], 'message': data})}\n\n"
+                elif msg_type == 'complete':
+                    yield f"data: {json.dumps({'type': 'complete', 'file': file_data_list[idx]['filename'], 'resume': data})}\n\n"
+                elif msg_type == 'error':
+                    yield f"data: {json.dumps({'type': 'error', 'file': file_data_list[idx]['filename'], 'error': data})}\n\n"
+    
+    return Response(generate(), mimetype='text/event-stream', headers={
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no'
+    })
+
+
+def save_and_parse_resume_stream(file, user_id, progress_queue):
+    """保存并解析简历，带进度队列回调"""
+    import uuid
+    from app import db
+    
+    def progress_callback(msg):
+        progress_queue.put(('progress', msg))
+    
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    
+    original_filename = getattr(file, 'filename', 'resume.pdf')
+    ext = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else 'pdf'
+    
+    file.seek(0)
+    file_hash = calculate_file_hash(file)
+    progress_callback(f"计算文件哈希完成")
+    
+    unique_filename = f"{uuid.uuid4()}.{ext}"
+    file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
+    
+    file.seek(0)
+    with open(file_path, 'wb') as f:
+        f.write(file.read())
+    progress_callback(f"文件保存成功")
+    
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0)
+    
+    resume = Resume(
+        user_id=user_id,
+        file_name=original_filename,
+        file_path=file_path,
+        file_type=ext,
+        file_size=file_size,
+        file_hash=file_hash,
+        parsing_status='processing'
+    )
+    
+    db.session.add(resume)
+    db.session.flush()
+    progress_callback(f"数据库记录创建成功")
+    
+    try:
+        progress_callback(f"开始AI解析简历...")
+        parsed_data = parse_resume_with_ai_stream(file_path, progress_callback)
+        
+        resume.parsed_data = parsed_data.get('raw_text', '')
+        structured = parsed_data.get('structured', {})
+        resume.ai_summary = structured.get('summary', '')
+        resume.ai_skills = structured.get('skills', [])
+        resume.ai_experience = structured.get('experience', [])
+        resume.ai_education = structured.get('education', [])
+        resume.ai_projects = structured.get('projects', [])
+        
+        contact = {
+            'email': structured.get('email'),
+            'phone': structured.get('phone'),
+            'name': structured.get('name'),
+            'gender': structured.get('gender'),
+            'birthday': structured.get('birthday'),
+            'city': structured.get('city')
+        }
+        resume.ai_contact = contact
+        resume.ai_structured = structured
+        
+        score_value = structured.get('score')
+        if score_value is not None:
+            try:
+                resume.ai_score = float(score_value) if isinstance(score_value, (int, float)) else float(str(score_value).strip())
+                if resume.ai_score > 100:
+                    resume.ai_score = 100
+                elif resume.ai_score < 0:
+                    resume.ai_score = 0
+            except (ValueError, TypeError):
+                resume.ai_score = None
+        
+        resume.parsing_status = 'completed'
+        progress_callback(f"AI解析完成")
+        
+    except Exception as e:
+        print(f"tazlyx debug: Resume parsing error: {str(e)}")
+        resume.parsing_status = 'failed'
+        resume.parsed_data = str(e)
+        progress_callback(f"解析失败: {str(e)}")
+    
+    return resume

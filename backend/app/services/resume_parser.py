@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Any
 from dotenv import load_dotenv
 load_dotenv()
 from config import Config
+from app.services.ai_service import AIServiceFactory
 
 
 class ResumeParser:
@@ -397,3 +398,111 @@ def parse_resume_with_ai(file_path: str, raw_text: str = None) -> Dict[str, Any]
         import traceback
         print(f"tazlyx debug: Traceback: {traceback.format_exc()}")
         return {'error': str(e)}
+
+
+def parse_resume_with_ai_stream(file_path: str, progress_callback=None) -> dict:
+    """使用 AI 流式解析简历文本"""
+    print(f"tazlyx debug: Starting AI streaming parsing for {file_path}")
+    
+    if progress_callback:
+        progress_callback("正在提取文本...")
+    
+    parser = ResumeParser()
+    if file_path.lower().endswith('.pdf'):
+        result = parser.parse_pdf(file_path)
+    elif file_path.lower().endswith('.docx'):
+        result = parser.parse_docx(file_path)
+    else:
+        return {'error': 'Unsupported file format'}
+    
+    raw_text = result.get('raw_text', '')
+    
+    if not raw_text:
+        print("tazlyx debug: No raw text extracted from file")
+        return {'error': 'No text extracted from file'}
+    
+    text_length = len(raw_text)
+    print(f"tazlyx debug: Raw text length: {text_length} characters")
+    
+    if progress_callback:
+        progress_callback(f"文本提取完成 ({text_length} 字符)")
+    
+    try:
+        provider = AIServiceFactory.get_current_provider()
+        print(f"tazlyx debug: Using AI provider: {provider}")
+        
+        if progress_callback:
+            progress_callback(f"正在调用 {provider} AI 分析...")
+        
+        service = AIServiceFactory.get_service(provider)
+
+        prompt = f"""请从以下简历文本中提取结构化信息，返回纯JSON格式，不要添加任何解释或markdown标记：
+
+简历文本:
+{raw_text[:8000]}
+
+请提取以下JSON字段（如果某项不存在则返回null或空数组）：
+{{
+    "name": "姓名",
+    "gender": "性别",
+    "birthday": "生日/年龄",
+    "email": "邮箱",
+    "phone": "电话",
+    "city": "所在城市（重要：如果简历中明确提到期望工作城市、求职意向中的城市、或现居城市，这些都属于所在城市。请务必从以下位置查找：1.简历顶部的个人信息 2.求职意向 3.个人简介 4.任何提及城市的地方。如果实在找不到返回null。）",
+    "summary": "个人简介/求职意向（包含期望城市、期望薪资、岗位等信息）",
+    "skills": ["技能1", "技能2"],
+    "experience": [
+        {{"title": "职位名称", "company": "公司名称", "dates": "工作时间", "description": "工作描述"}}
+    ],
+    "education": [
+        {{"degree": "学历", "school": "学校", "major": "专业", "graduation_date": "毕业时间"}}
+    ],
+    "projects": [
+        {{"name": "项目名称", "role": "个人职责", "tech": "技术栈", "description": "项目描述"}}
+    ],
+    "score": "综合评分(0-100整数，根据教育背景、工作经验、技能匹配度、项目经历等进行客观评分)"
+}}
+
+只返回JSON，不要有任何其他内容。"""
+
+        messages = [
+            {"role": "system", "content": "你是一个专业的简历解析助手，擅长从简历文本中提取结构化信息。你需要从简历中准确提取个人信息，包括姓名、联系方式、教育背景、工作经验、技能等。对于城市信息，你需要从求职意向、个人简介或任何提及的位置查找。务必返回完整、准确的JSON数据。"},
+            {"role": "user", "content": prompt}
+        ]
+
+        if progress_callback:
+            progress_callback("AI 正在分析简历内容...")
+        
+        print(f"tazlyx debug: Calling AI API...")
+        content = service.chat(messages)
+
+        print(f"tazlyx debug: AI response: {content[:200]}...")
+
+        if progress_callback:
+            progress_callback("AI 分析完成，正在解析结果...")
+        
+        import re
+        json_match = re.search(r'\{[\s\S]*\}', content)
+        if json_match:
+            structured = json.loads(json_match.group())
+            print(f"tazlyx debug: Parsed structured data: {list(structured.keys())}")
+            return {
+                'raw_text': raw_text,
+                'structured': structured
+            }
+        else:
+            print("tazlyx debug: No JSON found in AI response")
+            return {
+                'raw_text': raw_text,
+                'structured': {}
+            }
+
+    except Exception as e:
+        print(f"tazlyx debug: AI parsing error: {str(e)}")
+        import traceback
+        print(f"tazlyx debug: Traceback: {traceback.format_exc()}")
+        return {
+            'raw_text': raw_text,
+            'structured': {},
+            'error': str(e)
+        }

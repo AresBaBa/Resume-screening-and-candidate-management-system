@@ -2,38 +2,50 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, FileText, FolderOpen, ArrowRight, CheckCircle, AlertCircle, Loader2, X, Plus, Keyboard } from 'lucide-react';
+import { Upload, FileText, FolderOpen, ArrowRight, X, Plus, Keyboard, Loader2 } from 'lucide-react';
 import Header from '@/components/Header';
-import { resumeApi, uploadWithProgress } from '@/lib/api';
+import ResumeCard from '@/components/ResumeCard';
+import { resumeApi, StreamUploadMessage } from '@/lib/api';
+import { useUserStore } from '@/stores/userStore';
 
-interface SelectedFile {
+interface ResumeCardData {
   id: string;
-  file: File;
   name: string;
-  size: number;
+  file: File;
+  status: 'pending' | 'uploading' | 'analyzing' | 'completed' | 'error';
+  progress: number;
+  progressMessages: string[];
+  error?: string;
+  resumeData?: any;
 }
 
 export default function HomePage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ name: string; success: boolean; progress: number; error?: string }[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [processing, setProcessing] = useState(false);
+  const [cardData, setCardData] = useState<ResumeCardData[]>([]);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        if (selectedFiles.length > 0 && !uploading) {
+        if (selectedFiles.length > 0 && !processing) {
           handleUpload();
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedFiles, uploading]);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      if (xhrRef.current) {
+        xhrRef.current.abort();
+      }
+    };
+  }, [selectedFiles, processing]);
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -66,21 +78,15 @@ export default function HomePage() {
 
   const addFiles = (files: File[]) => {
     const MAX_FILES = 5;
-    const newFiles: SelectedFile[] = files.map((file) => ({
-      id: Math.random().toString(36).substr(2, 9),
-      file,
-      name: file.name,
-      size: file.size,
-    }));
     setSelectedFiles((prev) => {
       const remainingSlots = MAX_FILES - prev.length;
       if (remainingSlots <= 0) return prev;
-      return [...prev, ...newFiles].slice(0, MAX_FILES);
+      return [...prev, ...files].slice(0, MAX_FILES);
     });
   };
 
-  const removeFile = (id: string) => {
-    setSelectedFiles((prev) => prev.filter((f) => f.id !== id));
+  const removeFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleDragClick = () => {
@@ -94,54 +100,166 @@ export default function HomePage() {
   };
 
   const handleUpload = async () => {
-    if (selectedFiles.length === 0) return;
+    console.log('tazlyx debug: handleUpload called', { selectedFilesLength: selectedFiles.length, processing });
+    if (selectedFiles.length === 0 || processing) {
+      console.log('tazlyx debug: early return', { selectedFilesLength: selectedFiles.length, processing });
+      return;
+    }
 
-    setUploading(true);
-    setUploadProgress(selectedFiles.map((f) => ({ name: f.name, success: false, progress: 0 })));
+    console.log('tazlyx debug: starting upload with files:', selectedFiles.map(f => f.name));
+
+    const initialCards: ResumeCardData[] = selectedFiles.map((file, idx) => ({
+      id: `card-${idx}-${Date.now()}`,
+      name: file.name,
+      file,
+      status: 'pending',
+      progress: 0,
+      progressMessages: [],
+    }));
+
+    setCardData(initialCards);
+    setProcessing(true);
+
+    const { token } = useUserStore.getState();
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    console.log('tazlyx debug: token exists:', !!token, token ? token.substring(0, 50) + '...' : null);
+    
+    const formData = new FormData();
+    selectedFiles.forEach((file) => formData.append('files', file));
+
+    console.log('tazlyx debug: sending fetch request to:', `${API_BASE_URL}/api/resumes/stream-upload`);
 
     try {
-      for (let i = 0; i < selectedFiles.length; i++) {
-        const selectedFile = selectedFiles[i];
-        setUploadProgress((prev) =>
-          prev.map((p, idx) => (idx === i ? { ...p, success: false, progress: 0 } : p))
-        );
+      const response = await fetch(`${API_BASE_URL}/api/resumes/stream-upload`, {
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        body: formData,
+      });
 
-        try {
-          await uploadWithProgress(
-            '/api/resumes',
-            selectedFile.file,
-            (progress) => {
-              setUploadProgress((prev) =>
-                prev.map((p, idx) => (idx === i ? { ...p, progress } : p))
-              );
+      console.log('tazlyx debug: fetch response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log('tazlyx debug: fetch error body:', errorText);
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      if (!reader) {
+        throw new Error('No response body');
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
+
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data: StreamUploadMessage = JSON.parse(line.substring(6));
+              handleStreamMessage(data);
+            } catch (e) {
+              console.error('tazlyx debug: Failed to parse SSE data:', e);
             }
-          );
-          setUploadProgress((prev) =>
-            prev.map((p, idx) => (idx === i ? { ...p, success: true, progress: 100 } : p))
-          );
-        } catch (error: any) {
-          setUploadProgress((prev) =>
-            prev.map((p, idx) =>
-              idx === i ? { ...p, success: false, error: error.response?.data?.msg || error.response?.data?.error || '上传失败' } : p
-            )
-          );
+          }
         }
       }
-    } finally {
-      setUploading(false);
+
+      console.log('tazlyx debug: All uploads completed');
+      setProcessing(false);
+    } catch (error: any) {
+      console.error('tazlyx debug: Upload error:', error);
+      setProcessing(false);
+      setCardData((prev) =>
+        prev.map((card) => ({
+          ...card,
+          status: 'error',
+          error: error.message || '网络错误',
+        }))
+      );
     }
   };
 
-  const handleClearAndUpload = () => {
+  const handleStreamMessage = (data: StreamUploadMessage) => {
+    console.log('tazlyx debug: SSE message:', data);
+
+    if (data.type === 'start') {
+      setCardData((prev) =>
+        prev.map((card, idx) =>
+          idx === data.index ? { ...card, status: 'uploading', progress: 10 } : card
+        )
+      );
+    } else if (data.type === 'progress') {
+      setCardData((prev) =>
+        prev.map((card) => {
+          if (card.name === data.file) {
+            const newProgress = card.status === 'uploading' ? Math.min(50, 10 + card.progressMessages.length * 10) : card.progress;
+            const isAnalyzing = data.message?.includes('AI') || data.message?.includes('分析');
+            return {
+              ...card,
+              status: isAnalyzing ? 'analyzing' : card.status,
+              progress: isAnalyzing ? Math.min(90, 50 + card.progressMessages.length * 5) : newProgress,
+              progressMessages: [...card.progressMessages, data.message || ''],
+            };
+          }
+          return card;
+        })
+      );
+    } else if (data.type === 'complete') {
+      setCardData((prev) =>
+        prev.map((card) =>
+          card.name === data.file
+            ? { ...card, status: 'completed', progress: 100, resumeData: data.resume }
+            : card
+        )
+      );
+    } else if (data.type === 'error') {
+      setCardData((prev) =>
+        prev.map((card) =>
+          card.name === data.file
+            ? { ...card, status: 'error', error: data.error }
+            : card
+        )
+      );
+    }
+  };
+
+  const handleRemoveCard = (id: string) => {
+    setCardData((prev) => prev.filter((card) => card.id !== id));
+    if (cardData.length === 1) {
+      setProcessing(false);
+      setSelectedFiles([]);
+    }
+  };
+
+  const handleViewResume = (id: string) => {
+    const card = cardData.find((c) => c.id === id);
+    if (card?.resumeData?.id) {
+      router.push(`/resumes/${card.resumeData.id}`);
+    }
+  };
+
+  const handleClearAll = () => {
+    if (xhrRef.current) {
+      xhrRef.current.abort();
+      xhrRef.current = null;
+    }
+    setCardData([]);
     setSelectedFiles([]);
-    setUploadProgress([]);
+    setProcessing(false);
   };
 
-  const handleViewResumes = () => {
-    router.push('/resumes');
-  };
-
-  const allUploaded = uploadProgress.length > 0 && uploadProgress.every((p) => p.success);
+  const allCompleted = cardData.length > 0 && cardData.every((card) => card.status === 'completed');
+  const hasError = cardData.some((card) => card.status === 'error');
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
@@ -150,7 +268,7 @@ export default function HomePage() {
         subtitle="拖拽或点击上传 PDF 格式简历"
         actions={
           <button
-            onClick={handleViewResumes}
+            onClick={() => router.push('/resumes')}
             className="btn btn-secondary flex items-center gap-2"
           >
             <FileText size={18} />
@@ -160,195 +278,55 @@ export default function HomePage() {
       />
 
       <div className="p-6">
-        <div className="max-w-4xl mx-auto">
-          {uploadProgress.length === 0 || allUploaded ? (
-            <div
-              className={`relative border-2 border-dashed rounded-2xl p-16 text-center transition-all cursor-pointer ${
-                dragActive
-                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 scale-[1.02]'
-                  : 'border-gray-300 dark:border-slate-600 hover:border-primary-400 hover:bg-gray-50 dark:hover:bg-slate-800/50'
-              }`}
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-              onClick={handleDragClick}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf"
-                multiple
-                className="hidden"
-                onChange={handleFileSelect}
-              />
+        <div className="max-w-6xl mx-auto">
+          {cardData.length === 0 ? (
+            <>
+              <div
+                className={`relative border-2 border-dashed rounded-2xl p-16 text-center transition-all cursor-pointer ${
+                  dragActive
+                    ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 scale-[1.02]'
+                    : 'border-gray-300 dark:border-slate-600 hover:border-primary-400 hover:bg-gray-50 dark:hover:bg-slate-800/50'
+                }`}
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                onClick={handleDragClick}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
 
-              <div className="flex flex-col items-center">
-                <div
-                  className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 transition-all ${
-                    dragActive ? 'bg-primary-100 dark:bg-primary-900/50' : 'bg-gray-100 dark:bg-slate-700'
-                  }`}
-                >
-                  {dragActive ? (
-                    <Upload className="w-12 h-12 text-primary-600 dark:text-primary-400" />
-                  ) : (
-                    <FolderOpen className="w-12 h-12 text-gray-400 dark:text-slate-500" />
-                  )}
-                </div>
-
-                <p className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  {dragActive ? '松开鼠标添加文件' : '拖拽PDF文件到此处上传'}
-                </p>
-                <p className="text-gray-500 dark:text-gray-400">或点击此处选择文件</p>
-
-                <div className="mt-6 flex items-center gap-2 text-sm text-gray-400">
-                  <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-slate-600 flex items-center justify-center">
-                    <span className="text-xs font-medium">PDF</span>
-                  </div>
-                  <span>仅支持 PDF 格式</span>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {selectedFiles.length > 0 && uploadProgress.length === 0 && (
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
-              <div className="p-4 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900 dark:text-white">
-                  已选择 {selectedFiles.length}/5 个文件
-                </h3>
-                {selectedFiles.length < 5 ? (
-                  <button
-                    onClick={handleDragClick}
-                    className="btn btn-secondary py-1.5 flex items-center gap-1.5 text-sm"
-                  >
-                    <Plus size={16} />
-                    继续添加
-                  </button>
-                ) : (
-                  <span className="text-sm text-orange-500">已达到最大数量</span>
-                )}
-              </div>
-              <div className="p-4 space-y-2 max-h-64 overflow-y-auto">
-                {selectedFiles.map((file) => (
+                <div className="flex flex-col items-center">
                   <div
-                    key={file.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg"
+                    className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 transition-all ${
+                      dragActive ? 'bg-primary-100 dark:bg-primary-900/50' : 'bg-gray-100 dark:bg-slate-700'
+                    }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <FileText className="text-primary-600 dark:text-primary-400" size={20} />
-                      <div>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">{file.name}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{formatFileSize(file.size)}</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => removeFile(file.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400 transition-colors"
-                    >
-                      <X size={18} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div className="p-4 border-t border-gray-200 dark:border-slate-700 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                  <Keyboard size={16} />
-                  <span>
-                    按 <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-slate-600 rounded text-xs">Ctrl</kbd> +{' '}
-                    <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-slate-600 rounded text-xs">Enter</kbd>{' '}
-                    快速上传
-                  </span>
-                </div>
-                <button
-                  onClick={handleUpload}
-                  disabled={uploading || selectedFiles.length === 0}
-                  className="btn btn-primary flex items-center gap-2"
-                >
-                  {uploading ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      上传中...
-                    </>
-                  ) : (
-                    <>
-                      <Upload size={18} />
-                      上传简历
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {uploading && uploadProgress.length > 0 && !allUploaded && (
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
-              <div className="p-4 border-b border-gray-200 dark:border-slate-700">
-                <h3 className="font-semibold text-gray-900 dark:text-white">上传进度</h3>
-              </div>
-              <div className="p-4 space-y-3">
-                {uploadProgress.map((item, index) => (
-                  <div key={index}>
-                    <div className="flex items-center gap-3 text-sm mb-1">
-                      {item.success ? (
-                        <CheckCircle className="w-4 h-4 text-green-500" />
-                      ) : item.error ? (
-                        <AlertCircle className="w-4 h-4 text-red-500" />
-                      ) : (
-                        <Loader2 className="w-4 h-4 text-primary-600 animate-spin" />
-                      )}
-                      <span className="text-gray-600 dark:text-gray-400 flex-1 truncate">{item.name}</span>
-                      {item.success && <span className="text-green-500">上传成功</span>}
-                      {item.error && <span className="text-red-500">{item.error}</span>}
-                      {!item.success && !item.error && <span className="text-primary-600">{item.progress}%</span>}
-                    </div>
-                    {!item.success && !item.error && (
-                      <div className="ml-7 h-1.5 bg-gray-200 dark:bg-slate-600 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-primary-600 rounded-full transition-all duration-300"
-                          style={{ width: `${item.progress}%` }}
-                        />
-                      </div>
+                    {dragActive ? (
+                      <Upload className="w-12 h-12 text-primary-600 dark:text-primary-400" />
+                    ) : (
+                      <FolderOpen className="w-12 h-12 text-gray-400 dark:text-slate-500" />
                     )}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
 
-          {allUploaded && (
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 p-6">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">上传成功</h3>
-                <p className="text-gray-500 dark:text-gray-400 mb-4">
-                  已成功上传 {uploadProgress.length} 个简历文件
-                </p>
-                <div className="flex justify-center gap-3">
-                  <button onClick={handleClearAndUpload} className="btn btn-secondary">
-                    继续上传
-                  </button>
-                  <button onClick={handleViewResumes} className="btn btn-primary">
-                    查看简历列表
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+                  <p className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    {dragActive ? '松开鼠标添加文件' : '拖拽PDF文件到此处上传'}
+                  </p>
+                  <p className="text-gray-500 dark:text-gray-400">或点击此处选择文件</p>
 
-          {selectedFiles.length === 0 && uploadProgress.length === 0 && (
-            <>
-              <div className="mt-8 flex justify-center">
-                <button
-                  onClick={handleViewResumes}
-                  className="group flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-700 dark:text-gray-300 hover:border-primary-400 hover:text-primary-600 dark:hover:text-primary-400 transition-all shadow-sm hover:shadow-md"
-                >
-                  <FileText size={20} />
-                  <span className="font-medium">查看已上传简历</span>
-                  <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                </button>
+                  <div className="mt-6 flex items-center gap-2 text-sm text-gray-400">
+                    <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-slate-600 flex items-center justify-center">
+                      <span className="text-xs font-medium">PDF</span>
+                    </div>
+                    <span>仅支持 PDF 格式</span>
+                  </div>
+                </div>
               </div>
 
               <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -368,13 +346,110 @@ export default function HomePage() {
                 </div>
                 <div className="p-6 bg-white dark:bg-slate-800 rounded-xl shadow-sm">
                   <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center mb-4">
-                    <CheckCircle className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                    <FileText className="w-6 h-6 text-purple-600 dark:text-purple-400" />
                   </div>
                   <h3 className="font-semibold text-gray-900 dark:text-white mb-2">高效管理</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400">一站式管理候选人信息，快速筛选</p>
                 </div>
               </div>
             </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  {processing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 text-primary-600 animate-spin" />
+                      <span className="text-sm text-gray-600 dark:text-gray-400">处理中...</span>
+                    </>
+                  ) : (
+                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                      {allCompleted ? '处理完成' : hasError ? '部分失败' : '等待处理'}
+                    </span>
+                  )}
+                </div>
+                {/* <button
+                  onClick={handleClearAll}
+                  className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                >
+                  清除全部
+                </button> */}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4" style={{ aspectRatio: '4/3' }}>
+                {cardData.map((card) => (
+                  <div key={card.id} style={{ minHeight: '280px' }}>
+                    <ResumeCard
+                      data={card}
+                      onRemove={!processing ? handleRemoveCard : undefined}
+                      onView={card.status === 'completed' ? handleViewResume : undefined}
+                    />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {selectedFiles.length > 0 && cardData.length === 0 && !processing && (
+            <div className="bg-white dark:bg-slate-800 rounded-xl mt-5 shadow-sm border border-gray-200 dark:border-slate-700">
+              <div className="p-4 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900 dark:text-white">
+                  已选择 {selectedFiles.length}/5 个文件
+                </h3>
+                {selectedFiles.length < 5 ? (
+                  <button
+                    onClick={handleDragClick}
+                    className="btn btn-secondary py-1.5 flex items-center gap-1.5 text-sm"
+                  >
+                    <Plus size={16} />
+                    继续添加
+                  </button>
+                ) : (
+                  <span className="text-sm text-orange-500">已达到最大数量</span>
+                )}
+              </div>
+              <div className="p-4 space-y-2 max-h-64 overflow-y-auto">
+                {selectedFiles.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      <FileText className="text-primary-600 dark:text-primary-400" size={20} />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">{file.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{formatFileSize(file.size)}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeFile(index)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400 transition-colors"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 border-t border-gray-200 dark:border-slate-700 flex items-center justify-between">
+                <button
+                  onClick={() => setSelectedFiles([])}
+                  className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                >
+                  清除全部
+                </button>
+                <button
+                  onClick={() => {
+                    console.log('tazlyx debug: button clicked');
+                    handleUpload();
+                  }}
+                  disabled={selectedFiles.length === 0 || processing}
+                  className="btn btn-primary flex items-center gap-2"
+                >
+                  <Upload size={18} />
+                  开始上传并分析
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>
