@@ -444,17 +444,23 @@ export default function CandidatesPage() {
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
+                          <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center flex-shrink-0">
                             <span className="text-primary-600 dark:text-primary-400 font-medium">
                               {(candidate.applicant_name || 'C')[0].toUpperCase()}
                             </span>
                           </div>
-                          <div>
-                            <p className="font-medium text-gray-900 dark:text-white">
+                          <div className="min-w-0">
+                            <p 
+                              className="font-medium text-gray-900 dark:text-white truncate max-w-[150px]"
+                              title={candidate.applicant_name || '未知'}
+                            >
                               {candidate.applicant_name || '未知'}
                             </p>
                             {candidate.resume?.ai_skills && (
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                              <p 
+                                className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
+                                title={candidate.resume.ai_skills.join(', ')}
+                              >
                                 {candidate.resume.ai_skills.slice(0, 3).join(', ')}
                               </p>
                             )}
@@ -462,23 +468,32 @@ export default function CandidatesPage() {
                         </div>
                       </td>
                       <td className="px-4 py-4">
-                        <div className="space-y-1">
+                        <div className="space-y-1 min-w-0">
                           {candidate.applicant_email && (
-                            <p className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-1">
-                              <Mail size={12} />
-                              {candidate.applicant_email}
+                            <p 
+                              className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-1 truncate max-w-[180px]"
+                              title={candidate.applicant_email}
+                            >
+                              <Mail size={12} className="flex-shrink-0" />
+                              <span className="truncate">{candidate.applicant_email}</span>
                             </p>
                           )}
                           {candidate.applicant_phone && (
-                            <p className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-1">
-                              <Phone size={12} />
-                              {candidate.applicant_phone}
+                            <p 
+                              className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-1 truncate max-w-[180px]"
+                              title={candidate.applicant_phone}
+                            >
+                              <Phone size={12} className="flex-shrink-0" />
+                              <span className="truncate">{candidate.applicant_phone}</span>
                             </p>
                           )}
                           {candidate.applicant_city && (
-                            <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                              <MapPin size={12} />
-                              {candidate.applicant_city}
+                            <p 
+                              className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1 truncate max-w-[180px]"
+                              title={candidate.applicant_city}
+                            >
+                              <MapPin size={12} className="flex-shrink-0" />
+                              <span className="truncate">{candidate.applicant_city}</span>
                             </p>
                           )}
                         </div>
